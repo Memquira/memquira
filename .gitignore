@@ -1,0 +1,46 @@
+# Build output
+/target/
+**/target/
+
+# Environment files with real values; only the committed *.example templates are tracked
+.env
+.env.*
+*.env
+!.env.example
+!.env.production.example
+!crates/memcore-config/tests/fixtures/reference.env
+docker/.env
+profiles/*.env
+
+# Local data, databases, runtime volumes and backups
+/data/
+/backups/
+/backup/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.dump
+*.snapshot
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+*~
+
+# Security scan and SBOM artefacts
+sbom*.json
+trivy-results.*
+gitleaks-report.*
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Node.js (examples)
+node_modules/

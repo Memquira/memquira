@@ -1,0 +1,15 @@
+[package]
+name = "memcore-config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# Launch T19: provider endpoint validation (already in the dependency tree via reqwest).
+url = "2"
+dotenvy = "0.15"
+memcore-common = { path = "../memcore-common" }

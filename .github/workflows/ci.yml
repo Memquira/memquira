@@ -1,0 +1,139 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Same toolchain as the Docker builder (docker/Dockerfile).
+  RUST_TOOLCHAIN: "1.89.0"
+
+jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+      # SQLite, mocks and in-process fakes only: tests against real PostgreSQL / Qdrant skip without their
+      # MEMCORE_TEST_* variables, and no test calls a model provider.
+      - run: cargo test --workspace
+
+  integration:
+    name: Integration (PostgreSQL + Qdrant)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.14
+        env:
+          POSTGRES_PASSWORD: ci-only-password
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+      qdrant:
+        image: qdrant/qdrant:v1.18.0
+        ports: ["6334:6334"]
+    env:
+      MEMCORE_TEST_POSTGRES_URL: postgres://postgres:ci-only-password@127.0.0.1:55432/postgres
+      MEMCORE_TEST_QDRANT_URL: http://127.0.0.1:6334
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p memcore-storage --features postgres,qdrant -- --test-threads 1
+
+  features:
+    name: Feature builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check -p memcore-api --features postgres,qdrant
+      - run: cargo check -p memcore-api --features redis-cache
+
+  supply-chain:
+    name: Dependencies and licences
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories bans licenses sources
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
+      - name: Third-party licence file is current
+        run: |
+          cargo fetch --locked
+          python3 scripts/release/third_party_licenses.py --check
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.21.2
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+      - run: gitleaks dir . --config .gitleaks.toml --redact --no-banner
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          build-args: CARGO_FEATURES=postgres,qdrant
+          push: false
+          tags: memquira:ci

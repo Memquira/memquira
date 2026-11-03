@@ -1,0 +1,18 @@
+Memquira (memcore engine)
+
+Memquira is licensed under the GNU Affero General Public License v3.0 or later (see LICENSE).
+
+This distribution includes third-party software:
+
+1. Swagger UI 5.32.14, served at /docs and compiled into memcore-api.
+   Licensed under the Apache License, Version 2.0 (see swagger-ui/LICENSE).
+   Its NOTICE file (swagger-ui/NOTICE) reads:
+
+     swagger-ui
+     Copyright 2020-2021 SmartBear Software Inc.
+
+   Its minified bundles include third-party JavaScript. The licence notices of those libraries, as published with
+   Swagger UI, are in swagger-ui/*.js.LICENSE.txt (one file per bundle).
+
+2. Rust crates linked into memcore-api and memcore-maintenance.
+   Their licences and notices are reproduced in THIRD_PARTY_LICENSES.txt.

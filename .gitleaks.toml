@@ -1,0 +1,14 @@
+# Gitleaks configuration (CI secret scan). Default rules, plus an allowlist for the two documented
+# local-development keys that appear in examples and Compose files. Never add a real credential here.
+
+title = "memquira gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented local-development API keys (not secrets)"
+regexes = [
+  '''memcore_dev_key''',
+  '''memcore_local_starter_key''',
+]

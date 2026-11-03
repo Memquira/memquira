@@ -1,0 +1,36 @@
+[package]
+name = "memcore-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+metrics = "0.24"
+# Launch T5: cl100k_base token counts for the D76 context (MIT; ranks embedded, no download).
+tiktoken-rs = "=0.12.0"
+async-trait = "0.1"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+# Bounded, order-preserving concurrency for structured extraction windows (Phase 1 Part B).
+futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
+memcore-common = { path = "../memcore-common" }
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+hex = "0.4"
+regex = "1"
+serde_json = "1"
+unicode-normalization = "0.1"
+tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
+tracing = "0.1"
+uuid = { version = "1", features = ["serde", "v4"] }
+
+[dev-dependencies]
+memcore-providers = { path = "../memcore-providers" }
+memcore-storage = { path = "../memcore-storage", default-features = false }
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "test-util"] }
+

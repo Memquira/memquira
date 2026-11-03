@@ -1,0 +1,259 @@
+{
+  "fixture": "phase4_decomposition_contract_v1",
+  "contract": "decompose-v1",
+  "note": "Invented questions and canned model responses only (names Rowena, Dunstan, Ixora, Pellam). No model is called; the parser, validation and fallback are tested against these. 'accepted' lists the sub-queries kept after trimming and deduplication against the original question (D191 clauses are empty for these questions).",
+  "rules": {
+    "max_sub_queries": 3,
+    "item_min_chars": 3,
+    "item_max_chars": 200,
+    "input_max_chars": 1000,
+    "code_fence": "one surrounding ``` or ```json fence stripped",
+    "partial_use": "never"
+  },
+  "cases": [
+    {
+      "id": "valid_two",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "{\"sub_queries\": [\"What did Rowena bake for the harvest festival?\", \"What did Dunstan bake for the harvest festival?\"]}",
+      "expected": "accepted",
+      "expected_sub_queries": [
+        "What did Rowena bake for the harvest festival?",
+        "What did Dunstan bake for the harvest festival?"
+      ]
+    },
+    {
+      "id": "valid_one",
+      "question": "Where did Pellam travel after the pottery workshop in May 2023?",
+      "response": "{\"sub_queries\": [\"When was Pellam's pottery workshop in May 2023?\"]}",
+      "expected": "accepted",
+      "expected_sub_queries": [
+        "When was Pellam's pottery workshop in May 2023?"
+      ]
+    },
+    {
+      "id": "valid_three",
+      "question": "Which gifts did Rowena, Dunstan and Ixora bring to the choir picnic?",
+      "response": "{\"sub_queries\": [\"What gift did Rowena bring to the choir picnic?\", \"What gift did Dunstan bring to the choir picnic?\", \"What gift did Ixora bring to the choir picnic?\"]}",
+      "expected": "accepted",
+      "expected_sub_queries": [
+        "What gift did Rowena bring to the choir picnic?",
+        "What gift did Dunstan bring to the choir picnic?",
+        "What gift did Ixora bring to the choir picnic?"
+      ]
+    },
+    {
+      "id": "empty_list_is_valid_no_extra_queries",
+      "question": "What did Ixora plant in the orchard?",
+      "response": "{\"sub_queries\": []}",
+      "expected": "accepted",
+      "expected_sub_queries": []
+    },
+    {
+      "id": "code_fence_json_stripped",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "```json\n{\"sub_queries\": [\"What did Rowena bake for the harvest festival?\"]}\n```",
+      "expected": "accepted",
+      "expected_sub_queries": [
+        "What did Rowena bake for the harvest festival?"
+      ]
+    },
+    {
+      "id": "plain_code_fence_stripped",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "```\n{\"sub_queries\": [\"What did Dunstan bake for the harvest festival?\"]}\n```",
+      "expected": "accepted",
+      "expected_sub_queries": [
+        "What did Dunstan bake for the harvest festival?"
+      ]
+    },
+    {
+      "id": "surrounding_whitespace_trimmed",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "  \n{\"sub_queries\": [\"  What did Rowena bake for the harvest festival?  \"]}\n ",
+      "expected": "accepted",
+      "expected_sub_queries": [
+        "What did Rowena bake for the harvest festival?"
+      ]
+    },
+    {
+      "id": "original_repeated_is_dropped",
+      "question": "What did Ixora plant in the orchard?",
+      "response": "{\"sub_queries\": [\"what did ixora plant in the orchard?\"]}",
+      "expected": "accepted",
+      "expected_sub_queries": []
+    },
+    {
+      "id": "duplicates_case_insensitive_dropped",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "{\"sub_queries\": [\"What did Rowena bake for the harvest festival?\", \"WHAT DID ROWENA BAKE FOR THE HARVEST FESTIVAL?\"]}",
+      "expected": "accepted",
+      "expected_sub_queries": [
+        "What did Rowena bake for the harvest festival?"
+      ]
+    },
+    {
+      "id": "dates_copied_verbatim_kept",
+      "question": "Where did Pellam travel after the pottery workshop in May 2023?",
+      "response": "{\"sub_queries\": [\"Where did Pellam travel in May 2023?\"]}",
+      "expected": "accepted",
+      "expected_sub_queries": [
+        "Where did Pellam travel in May 2023?"
+      ]
+    },
+    {
+      "id": "min_length_3_ok",
+      "question": "What did Ixora plant in the orchard?",
+      "response": "{\"sub_queries\": [\"Ixo\"]}",
+      "expected": "accepted",
+      "expected_sub_queries": [
+        "Ixo"
+      ]
+    },
+    {
+      "id": "max_length_200_ok",
+      "question": "What did Ixora plant in the orchard?",
+      "response": "{\"sub_queries\": [\"What did Ixora plant oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo?\"]}",
+      "expected": "accepted",
+      "expected_sub_queries": [
+        "What did Ixora plant oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo?"
+      ]
+    },
+    {
+      "id": "too_many_four",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "{\"sub_queries\": [\"a1 q?\", \"a2 q?\", \"a3 q?\", \"a4 q?\"]}",
+      "expected": "fallback:schema",
+      "expected_sub_queries": null
+    },
+    {
+      "id": "extra_key",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "{\"sub_queries\": [\"What did Rowena bake?\"], \"reason\": \"comparison\"}",
+      "expected": "fallback:schema",
+      "expected_sub_queries": null
+    },
+    {
+      "id": "missing_key",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "{\"queries\": [\"What did Rowena bake?\"]}",
+      "expected": "fallback:schema",
+      "expected_sub_queries": null
+    },
+    {
+      "id": "not_an_object",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "[\"What did Rowena bake?\"]",
+      "expected": "fallback:schema",
+      "expected_sub_queries": null
+    },
+    {
+      "id": "sub_queries_not_array",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "{\"sub_queries\": \"What did Rowena bake?\"}",
+      "expected": "fallback:schema",
+      "expected_sub_queries": null
+    },
+    {
+      "id": "non_string_item",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "{\"sub_queries\": [\"What did Rowena bake?\", 7]}",
+      "expected": "fallback:schema",
+      "expected_sub_queries": null
+    },
+    {
+      "id": "null_item",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "{\"sub_queries\": [null]}",
+      "expected": "fallback:schema",
+      "expected_sub_queries": null
+    },
+    {
+      "id": "too_short_item",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "{\"sub_queries\": [\"ab\"]}",
+      "expected": "fallback:schema",
+      "expected_sub_queries": null
+    },
+    {
+      "id": "empty_string_item",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "{\"sub_queries\": [\"   \"]}",
+      "expected": "fallback:schema",
+      "expected_sub_queries": null
+    },
+    {
+      "id": "over_long_item",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "{\"sub_queries\": [\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"]}",
+      "expected": "fallback:schema",
+      "expected_sub_queries": null
+    },
+    {
+      "id": "line_break_in_item",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "{\"sub_queries\": [\"What did Rowena\\nbake?\"]}",
+      "expected": "fallback:schema",
+      "expected_sub_queries": null
+    },
+    {
+      "id": "invalid_json",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "{\"sub_queries\": [\"What did Rowena bake?\"",
+      "expected": "fallback:invalid_json",
+      "expected_sub_queries": null
+    },
+    {
+      "id": "prose_before_json",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "Here you go: {\"sub_queries\": []}",
+      "expected": "fallback:invalid_json",
+      "expected_sub_queries": null
+    },
+    {
+      "id": "two_json_objects",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "{\"sub_queries\": []}{\"sub_queries\": []}",
+      "expected": "fallback:invalid_json",
+      "expected_sub_queries": null
+    },
+    {
+      "id": "empty_response",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "",
+      "expected": "fallback:invalid_json",
+      "expected_sub_queries": null
+    },
+    {
+      "id": "answer_instead_of_queries",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": "{\"answer\": \"Rowena baked more.\"}",
+      "expected": "fallback:schema",
+      "expected_sub_queries": null
+    },
+    {
+      "id": "input_over_1000_chars_no_call",
+      "question": "What did Rowena bake and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and and ?",
+      "response": null,
+      "expected": "fallback:input_too_long",
+      "expected_sub_queries": null
+    },
+    {
+      "id": "provider_error",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": {
+        "provider_error": "invented connection reset"
+      },
+      "expected": "fallback:model_error",
+      "expected_sub_queries": null
+    },
+    {
+      "id": "provider_timeout",
+      "question": "Did Rowena or Dunstan bake more for the harvest festival?",
+      "response": {
+        "provider_timeout_ms": 10000
+      },
+      "expected": "fallback:model_timeout",
+      "expected_sub_queries": null
+    }
+  ]
+}

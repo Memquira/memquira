@@ -1,0 +1,197 @@
+# Fully local starter: no cloud services, no API keys, no paid calls.
+#
+# memcore-api + Qdrant + TEI (CPU, BAAI/bge-small-en-v1.5 pinned) + Ollama (local instruct model).
+# No AWS, no API keys, no paid calls. Facts and events in SQLite (a volume); vectors in Qdrant.
+#
+#   docker compose -f docker/docker-compose.local-starter.yml up -d --build
+#   curl -H "Authorization: Bearer memcore_local_starter_key" -H "X-Organization-ID: demo" \
+#        http://127.0.0.1:8080/ready
+#
+# Quality tier: compatible-unvalidated. Small local models are much weaker extractors than hosted ones;
+# use this stack to try the API offline, not to judge memory quality. See docs/providers.md.
+#
+# Images are pinned by tag AND digest (the tested versions). Overrides: docker/.env
+# (see docker/local-starter.env.example). Without TEI (e.g. arm64 hosts), add
+# docker/docker-compose.local-starter.ollama-embed.yml (Ollama embeddings fallback).
+
+name: memcore-local-starter
+
+x-memcore-env: &memcore-env
+  MEMCORE_ENV: development
+  MEMCORE_HOST: 0.0.0.0
+  MEMCORE_PORT: 8080
+  MEMCORE_LOG_FORMAT: json
+  MEMCORE_LOG_LEVEL: info
+
+  # Storage: SQLite facts / events (volume), Qdrant vectors.
+  MEMCORE_STORAGE_MODE: embedded
+  MEMCORE_FACT_BACKEND: sqlite
+  MEMCORE_EVENT_BACKEND: sqlite
+  MEMCORE_DATABASE_URL: sqlite:///app/data/memcore.db?mode=rwc
+  MEMCORE_DATABASE_MIGRATION_MODE: auto
+  MEMCORE_VECTOR_BACKEND: qdrant
+  MEMCORE_QDRANT_URL: http://qdrant:6334
+  MEMCORE_QDRANT_COLLECTION: memcore_facts
+  MEMCORE_QDRANT_EPISODE_COLLECTION: memcore_episodes
+  MEMCORE_EPISODES_ENABLED: "true"
+  MEMCORE_STARTUP_DEPENDENCY_TIMEOUT_SECONDS: 120
+
+  # Auth: one static dev key; the org comes from X-Organization-ID. Change the key.
+  MEMCORE_AUTH_ENABLED: "true"
+  MEMCORE_AUTH_MODE: dev
+  MEMCORE_DEV_API_KEY: ${MEMCORE_DEV_API_KEY:-memcore_local_starter_key}
+
+  # Never fall back to mock providers.
+  MEMCORE_ALLOW_MOCK: "false"
+
+  # LLM: Ollama's OpenAI-compatible endpoint (chat completions, response_format json_object).
+  MEMCORE_LLM_PROVIDER: openai
+  MEMCORE_LLM_MODEL: ${STARTER_LLM_MODEL:-qwen2.5:3b-instruct}
+  MEMCORE_LLM_BASE_URL: http://ollama:11434/v1
+  MEMCORE_LLM_ALLOW_NO_API_KEY: "true"
+  # The structured extraction prompt is too demanding for small local models: qwen2.5:3b often returned
+  # no facts or invented dates and names. The shorter legacy prompt returns valid JSON with facts.
+  MEMCORE_STRUCTURED_EXTRACTION_ENABLED: "false"
+  # Schema-constrained output (Ollama structured outputs). With json_object, qwen2.5:3b answered
+  # 0/5 classification requests in the expected shape (it echoed the schema skeleton instead).
+  MEMCORE_LLM_JSON_MODE: json_schema
+
+  # Embeddings: TEI serving BAAI/bge-small-en-v1.5 (CLS pooling, normalised by TEI) at the pinned
+  # revision. The BGE query instruction is the query prefix; documents get no prefix. Changing any
+  # of these changes the embedding identity and the Qdrant stores will refuse to start (by design).
+  MEMCORE_EMBEDDING_PROVIDER: openai
+  MEMCORE_EMBEDDING_MODEL: BAAI/bge-small-en-v1.5
+  MEMCORE_EMBEDDING_MODEL_REVISION: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
+  MEMCORE_EMBEDDING_SERVING_VARIANT: tei-cpu-1.7.4-onnx-cls
+  MEMCORE_EMBEDDING_BASE_URL: http://tei:80/v1
+  MEMCORE_EMBEDDING_ALLOW_NO_API_KEY: "true"
+  MEMCORE_EMBEDDING_DIMENSIONS: 384
+  MEMCORE_EMBEDDING_SEND_DIMENSIONS: "false"
+  MEMCORE_EMBEDDING_NORMALIZE: "true"
+  MEMCORE_EMBEDDING_QUERY_PREFIX: "Represent this sentence for searching relevant passages: "
+  # Dedup: exact text only (uncalibrated model; D-L3). Do not set MEMCORE_EMBEDDING_DEDUP_THRESHOLD
+  # unless you have calibrated it for this model.
+
+  # Provider guardrails: local models are free, but the guardrail stays on with a large budget.
+  MEMCORE_REAL_PROVIDER_CALLS_ENABLED: "true"
+  MEMCORE_PROVIDER_TEST_MODE: production
+  MEMCORE_PROVIDER_MAX_CALLS_PER_RUN: 1000000
+  # CPU inference is slow: long provider timeout, one chat call at a time, long write deadline.
+  MEMCORE_PROVIDER_TIMEOUT_SECONDS: 300
+  MEMCORE_PROVIDER_CHAT_MAX_CONCURRENCY: 1
+  MEMCORE_PROVIDER_EMBEDDING_MAX_CONCURRENCY: 4
+  MEMCORE_PROVIDER_PERMIT_TIMEOUT_MS: 600000
+  MEMCORE_ADMISSION_WRITE_MAX_IN_FLIGHT: 2
+  MEMCORE_ADMISSION_WRITE_DEADLINE_MS: 900000
+  MEMCORE_PROVIDER_PROBE: "true"
+
+  # Default retrieval settings, every optional feature off (same values as profiles/local-starter.env.example).
+  MEMCORE_REQUIRE_QUALITY_TIER: compatible-unvalidated
+  MEMCORE_SEARCH_MAX_LIMIT: 100
+  MEMCORE_QUERY_EMBEDDING_CACHE_CAPACITY: 10000
+  MEMCORE_CONSOLIDATION_MODE: legacy
+  MEMCORE_ENTITIES_ENABLED: "false"
+  MEMCORE_QUERY_ANALYSIS_ENABLED: "false"
+  MEMCORE_TEMPORAL_RANKING_ENABLED: "false"
+  MEMCORE_MULTI_QUERY: none
+  MEMCORE_RERANK_PROVIDER: none
+  MEMCORE_QUERY_DECOMPOSITION: none
+  MEMCORE_EXPERIMENTAL_CANDIDATES_ENABLED: "false"
+  MEMCORE_CONTEXT_CACHE_ENABLED: "false"
+  MEMCORE_CONTEXT_CACHE_BACKEND: disabled
+
+  MEMCORE_RATE_LIMIT_ENABLED: "true"
+  MEMCORE_RATE_LIMIT_REQUESTS_PER_MINUTE: 600
+  MEMCORE_METRICS_ENABLED: "true"
+  MEMCORE_CORS_ENABLED: "false"
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.18.0@sha256:b3063c673f3973877c038eeecc392bad5011f072ee7892b56c9a8e204a3bdea9
+    # REST API / dashboard on the host loopback only (inspection; memcore uses gRPC 6334 inside).
+    ports:
+      - "127.0.0.1:${STARTER_QDRANT_HOST_PORT:-6333}:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+  tei:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.7@sha256:22eac176ead3eb7008c672123b05331347e1a86661a7f27f3f6550dbe31ff96c
+    command:
+      - --model-id=BAAI/bge-small-en-v1.5
+      - --revision=5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
+      - --pooling=cls
+      - --max-batch-tokens=16384
+    volumes:
+      - tei_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:0.6.8@sha256:50ab2378567a62b811a2967759dd91f254864c3495cbe50576bd8a85bc6edd56
+    environment:
+      OLLAMA_KEEP_ALIVE: 24h
+      OLLAMA_NUM_PARALLEL: 1
+      # Ollama 0.6.8 defaults to 4096 and silently truncates longer prompts.
+      OLLAMA_CONTEXT_LENGTH: 8192
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+  # One-shot: pulls the LLM (and, with the fallback override, the embedding model) into the volume.
+  ollama-pull:
+    image: ollama/ollama:0.6.8@sha256:50ab2378567a62b811a2967759dd91f254864c3495cbe50576bd8a85bc6edd56
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      STARTER_PULL_MODELS: ${STARTER_LLM_MODEL:-qwen2.5:3b-instruct}
+    entrypoint: ["/bin/sh", "-c", "for m in $$STARTER_PULL_MODELS; do ollama pull $$m || exit 1; done"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+  memcore:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        CARGO_FEATURES: qdrant,postgres
+    image: memcore-api:local-starter
+    ports:
+      - "127.0.0.1:${MEMCORE_HOST_PORT:-8080}:8080"
+    environment:
+      <<: *memcore-env
+    volumes:
+      - memcore_data:/app/data
+    depends_on:
+      qdrant:
+        condition: service_started
+      tei:
+        condition: service_healthy
+      ollama-pull:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # A refused start (e.g. an embedding-identity mismatch) is not retried forever.
+    restart: on-failure:3
+
+volumes:
+  memcore_data:
+  qdrant_data:
+  tei_data:
+  ollama_data:

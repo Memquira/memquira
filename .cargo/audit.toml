@@ -1,0 +1,12 @@
+# cargo-audit configuration for memcore.
+# Keep in sync with deny.toml [advisories].
+
+[advisories]
+ignore = [
+    # sqlx-postgres → rsa; no fixed upgrade (Marvin). Revisit when sqlx drops rsa or rsa ships a fix.
+    # Kept here only: cargo-audit reads every Cargo.lock entry, and `rsa` is still locked for sqlx's
+    # unused MySQL driver; deny.toml dropped the ignore because cargo-deny audits the compiled graph.
+    "RUSTSEC-2023-0071",
+    # RUSTSEC-2026-0194 / -0195, -0098 / -0099 / -0104 and -0258 were removed with the `lancedb`
+    # feature (quick-xml 0.37, rustls-webpki 0.101 and h2 0.3 are no longer in Cargo.lock).
+]

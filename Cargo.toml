@@ -1,0 +1,23 @@
+[workspace]
+members = [
+    "crates/memcore-api",
+    "crates/memcore-core",
+    "crates/memcore-storage",
+    "crates/memcore-providers",
+    "crates/memcore-config",
+    "crates/memcore-common",
+]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/memquira/memquira"
+homepage = "https://github.com/memquira/memquira"
+
+# Temporary exceptions for existing call sites. Prefer fixing new code rather than
+# expanding this list.
+[workspace.lints.clippy]
+too_many_arguments = "allow"
+field_reassign_with_default = "allow"

@@ -1,0 +1,250 @@
+{
+  "description": "D148 parser fixtures for entity annotation output (D147 recovery policy). Every name and sentence is invented; none comes from a benchmark dataset or from the P3-07 audit. One or more cases per malformed-output class measured in P3-07 (aggregate classes only), plus strict-valid and combined cases. expect: parsed (strict), repaired (D147 syntax repair, listed), unusable (error class syntax / data / eof).",
+  "version": 1,
+  "measured_classes": [
+    "missing_terminal_closers",
+    "missing_internal_delimiter",
+    "trailing_material",
+    "wrong_types",
+    "duplicate_keys",
+    "trailing_comma",
+    "non_string_keys",
+    "truncated"
+  ],
+  "cases": [
+    {
+      "id": "V01",
+      "class": "strict_valid",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[{\"name\":\"Oriel\",\"entity_type\":\"person\",\"role\":\"subject\",\"aliases\":[]},{\"name\":\"Quibbet\",\"entity_type\":\"animal\",\"role\":\"object\",\"aliases\":[]}],\"relations\":[{\"subject\":\"Oriel\",\"relation\":\"owns\",\"object\":\"Quibbet\"}]}]}",
+      "expect": "parsed",
+      "names": [["Oriel", "Quibbet"]]
+    },
+    {
+      "id": "V02",
+      "class": "strict_valid",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[],\"relations\":[]},{\"fact_index\":1,\"entities\":[{\"name\":\"Lake Vessary\",\"entity_type\":\"place\",\"role\":\"object\",\"aliases\":[\"the lake\"]}],\"relations\":[]}]}",
+      "expect": "parsed",
+      "names": [[], ["Lake Vessary"]]
+    },
+    {
+      "id": "V03",
+      "class": "strict_valid",
+      "text": "  {\"facts\":[{\"fact_index\":0,\"entities\":[{\"name\":\"Café \\\"Brume\\\", Quillsby}\",\"entity_type\":\"place\",\"role\":\"object\",\"aliases\":[]}],\"relations\":[]}]}\n",
+      "expect": "parsed",
+      "names": [["Café \"Brume\", Quillsby}"]]
+    },
+    {
+      "id": "R01",
+      "class": "trailing_material",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[{\"name\":\"Brannoch\",\"entity_type\":\"person\",\"role\":\"subject\",\"aliases\":[]}],\"relations\":[]}]}\nThese are the entities.",
+      "expect": "repaired",
+      "repairs": ["trailing_material"],
+      "names": [["Brannoch"]]
+    },
+    {
+      "id": "R02",
+      "class": "trailing_material",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[],\"relations\":[]}]}{\"facts\":[{\"fact_index\":0,\"entities\":[{\"name\":\"Tamsin\",\"entity_type\":\"person\",\"role\":\"subject\",\"aliases\":[]}],\"relations\":[]}]}",
+      "expect": "repaired",
+      "repairs": ["trailing_material"],
+      "names": [[]]
+    },
+    {
+      "id": "R03",
+      "class": "trailing_material",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[{\"name\":\"Deverel\",\"entity_type\":\"person\",\"role\":\"subject\",\"aliases\":[]}],\"relations\":[]}]}}]",
+      "expect": "repaired",
+      "repairs": ["trailing_material"],
+      "names": [["Deverel"]]
+    },
+    {
+      "id": "R04",
+      "class": "trailing_material",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[],\"relations\":[]}]}\n```",
+      "expect": "repaired",
+      "repairs": ["trailing_material"],
+      "names": [[]]
+    },
+    {
+      "id": "C01",
+      "class": "trailing_comma",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[{\"name\":\"Oriel\",\"entity_type\":\"person\",\"role\":\"subject\",\"aliases\":[]},],\"relations\":[]}]}",
+      "expect": "repaired",
+      "repairs": ["trailing_comma"],
+      "names": [["Oriel"]]
+    },
+    {
+      "id": "C02",
+      "class": "trailing_comma",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[{\"name\":\"Quibbet\",\"entity_type\":\"animal\",\"role\":\"subject\",\"aliases\":[\"Quib\",],}],\"relations\":[],},]}",
+      "expect": "repaired",
+      "repairs": ["trailing_comma"],
+      "names": [["Quibbet"]]
+    },
+    {
+      "id": "M01",
+      "class": "missing_terminal_closers",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[{\"name\":\"Tamsin Ashby\",\"entity_type\":\"person\",\"role\":\"subject\",\"aliases\":[\"Tamsin\"]}],\"relations\":[]}",
+      "expect": "repaired",
+      "repairs": ["missing_closers"],
+      "names": [["Tamsin Ashby"]]
+    },
+    {
+      "id": "M02",
+      "class": "missing_terminal_closers",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[],\"relations\":[]}]",
+      "expect": "repaired",
+      "repairs": ["missing_closers"],
+      "names": [[]]
+    },
+    {
+      "id": "I01",
+      "class": "missing_internal_delimiter",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[{\"name\":\"Oriel\",\"entity_type\":\"person\",\"role\":\"subject\",\"aliases\":[]}{\"name\":\"Quibbet\",\"entity_type\":\"animal\",\"role\":\"object\",\"aliases\":[]}],\"relations\":[]}]}",
+      "expect": "unusable",
+      "error_class": "syntax"
+    },
+    {
+      "id": "I02",
+      "class": "missing_internal_delimiter",
+      "text": "{\"facts\":[{\"fact_index\" 0,\"entities\":[],\"relations\":[]}]}",
+      "expect": "unusable",
+      "error_class": "syntax"
+    },
+    {
+      "id": "I03",
+      "class": "missing_internal_delimiter",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[{\"name\":\"Brannoch\",\"entity_type\":\"person\",\"role\":\"subject\",\"aliases\":[]],\"relations\":[]}]}",
+      "expect": "unusable",
+      "error_class": "syntax"
+    },
+    {
+      "id": "I04",
+      "class": "missing_internal_delimiter",
+      "text": "{\"facts\":[{\"fact_index\":0 \"entities\":[],\"relations\":[]}]}",
+      "expect": "unusable",
+      "error_class": "syntax"
+    },
+    {
+      "id": "W01",
+      "class": "wrong_types",
+      "text": "{\"facts\":[{\"fact_index\":\"0\",\"entities\":[],\"relations\":[]}]}",
+      "expect": "unusable",
+      "error_class": "data"
+    },
+    {
+      "id": "W02",
+      "class": "wrong_types",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[{\"name\":\"Oriel\",\"entity_type\":\"person\",\"role\":\"subject\",\"aliases\":\"Ori\"}],\"relations\":[]}]}",
+      "expect": "unusable",
+      "error_class": "data"
+    },
+    {
+      "id": "W03",
+      "class": "wrong_types",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":{\"name\":\"Oriel\"},\"relations\":[]}]}",
+      "expect": "unusable",
+      "error_class": "data"
+    },
+    {
+      "id": "W04",
+      "class": "wrong_types",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[{\"name\":42,\"entity_type\":\"person\",\"role\":\"subject\",\"aliases\":[]}],\"relations\":[]}]}",
+      "expect": "unusable",
+      "error_class": "data"
+    },
+    {
+      "id": "D01",
+      "class": "duplicate_keys",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[{\"name\":\"Oriel\",\"name\":\"Tamsin\",\"entity_type\":\"person\",\"role\":\"subject\",\"aliases\":[]}],\"relations\":[]}]}",
+      "expect": "unusable",
+      "error_class": "data"
+    },
+    {
+      "id": "D02",
+      "class": "duplicate_keys",
+      "text": "{\"facts\":[],\"facts\":[{\"fact_index\":0,\"entities\":[],\"relations\":[]}]}",
+      "expect": "unusable",
+      "error_class": "data"
+    },
+    {
+      "id": "D03",
+      "class": "duplicate_keys",
+      "text": "{\"facts\":[{\"fact_index\":0,\"fact_index\":1,\"entities\":[],\"relations\":[]}]}",
+      "expect": "unusable",
+      "error_class": "data"
+    },
+    {
+      "id": "N01",
+      "class": "non_string_keys",
+      "text": "{facts:[{\"fact_index\":0,\"entities\":[],\"relations\":[]}]}",
+      "expect": "unusable",
+      "error_class": "syntax"
+    },
+    {
+      "id": "N02",
+      "class": "non_string_keys",
+      "text": "{\"facts\":[{0:\"x\",\"fact_index\":0,\"entities\":[],\"relations\":[]}]}",
+      "expect": "unusable",
+      "error_class": "syntax"
+    },
+    {
+      "id": "X01",
+      "class": "truncated",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[{\"name\":\"Quillsby Har",
+      "expect": "unusable",
+      "error_class": "eof"
+    },
+    {
+      "id": "X02",
+      "class": "truncated",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[{\"name\"",
+      "expect": "unusable",
+      "error_class": "eof"
+    },
+    {
+      "id": "X03",
+      "class": "truncated",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[],\"relations\":[]},",
+      "expect": "unusable",
+      "error_class": "eof"
+    },
+    {
+      "id": "X04",
+      "class": "truncated",
+      "text": "{\"facts\":[{\"fact_index\":1",
+      "expect": "unusable",
+      "error_class": "eof"
+    },
+    {
+      "id": "K01",
+      "class": "combined",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[{\"name\":\"Oriel\",\"entity_type\":\"person\",\"role\":\"subject\",\"aliases\":[],},],\"relations\":[]}]} trailing note",
+      "expect": "repaired",
+      "repairs": ["trailing_comma", "trailing_material"],
+      "names": [["Oriel"]]
+    },
+    {
+      "id": "K02",
+      "class": "combined",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[{\"name\":\"Oriel\",\"name\":\"Oriel\",\"entity_type\":\"person\",\"role\":\"subject\",\"aliases\":[],}],\"relations\":[]}]}",
+      "expect": "unusable",
+      "error_class": "data"
+    },
+    {
+      "id": "K03",
+      "class": "combined",
+      "text": "{\"facts\":[{\"fact_index\":\"zero\",\"entities\":[],\"relations\":[]}",
+      "expect": "unusable",
+      "error_class": "data"
+    },
+    {
+      "id": "K04",
+      "class": "combined",
+      "text": "{\"facts\":[{\"fact_index\":0,\"entities\":[],\"relations\":[]},]",
+      "expect": "repaired",
+      "repairs": ["trailing_comma", "missing_closers"],
+      "names": [[]]
+    }
+  ]
+}

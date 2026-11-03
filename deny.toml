@@ -1,0 +1,57 @@
+# cargo-deny policy for memcore.
+# Supply-chain policy checked in CI (`cargo deny check`): advisories, licences, bans and sources.
+
+[graph]
+targets = []
+all-features = true
+no-default-features = false
+
+[advisories]
+version = 2
+yanked = "warn"
+# Match cargo-audit pragmatism: unmaintained/unsound transitive noise should not fail CI.
+unmaintained = "workspace"
+unsound = "workspace"
+unused-ignored-advisory = "warn"
+# Launch AR-091: no advisory is ignored. Removed: RUSTSEC-2023-0071 (`rsa` is only a lockfile entry of sqlx's
+# unused MySQL driver, never compiled, so cargo-deny does not encounter it); RUSTSEC-2026-0194 / -0195 (quick-xml),
+# -0098 / -0099 / -0104 (rustls-webpki 0.101) and -0258 (h2 0.3), whose only path, the `lancedb` feature, was removed.
+ignore = []
+
+[licenses]
+version = 2
+confidence-threshold = 0.8
+# Workspace crates use publish = false; skip their license field.
+private = { ignore = true }
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+    "OpenSSL",
+    "CC0-1.0",
+    "MPL-2.0",
+    "0BSD",
+    "BSL-1.0",
+    "CDLA-Permissive-2.0",
+]
+exceptions = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+highlight = "all"
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

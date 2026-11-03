@@ -1,0 +1,15 @@
+# Build context for docker/Dockerfile (BuildKit reads `<Dockerfile>.dockerignore` before the root
+# .dockerignore). The image only COPYs the workspace manifests, crates/ and the licence files, so everything else
+# (target/, local data, secrets) stays out of the context.
+*
+!Cargo.toml
+!Cargo.lock
+!crates/
+# The licence and third-party notices the image ships under /usr/share/doc/memcore/.
+!LICENSE
+!licenses/
+crates/**/target/
+**/.env
+**/.env.*
+**/*.db
+**/*.sqlite

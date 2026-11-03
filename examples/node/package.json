@@ -1,0 +1,13 @@
+{
+  "name": "memcore-node-examples",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Example memcore HTTP client (not published)",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "full-flow": "node full-flow.js"
+  }
+}

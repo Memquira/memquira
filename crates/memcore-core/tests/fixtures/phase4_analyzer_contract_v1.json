@@ -1,0 +1,1128 @@
+{
+  "contract": "phase4-analyzer-contract-v1",
+  "decisions": "query analyzer specification, sections 2, 4 and 8",
+  "frozen": "Expected outputs never change because an implementation disagrees; a specification defect needs maintainer review and a versioned revision (D194).",
+  "schema": {
+    "question_type": [
+      "when",
+      "count",
+      "yes_no",
+      "list",
+      "inference",
+      "factoid"
+    ],
+    "temporal_constraint": "null or {start, end, granularity}; RFC 3339 UTC, inclusive, start or end null when open-ended; granularity day|week|month|year|approximate",
+    "relative_expression": "null or the matched relative expression, lower-case, whether or not it resolved",
+    "temporal_ordinal": [
+      "earliest",
+      "latest",
+      "none"
+    ],
+    "sub_queries": "[] or 2-3 clause strings; the original query is always used in addition"
+  },
+  "normalisation": "lower-case; whitespace split; leading/trailing punctuation stripped per word except '-' inside ISO dates; apostrophe-s kept",
+  "reference_time_rule": "reference_time (RFC 3339, any offset) is converted to UTC; its UTC calendar date is the anchor day (Phase 1 resolver rule). Without reference_time, relative expressions stay unresolved: no system clock, no inferred date. Seasons unsupported.",
+  "cases": [
+    {
+      "id": 1,
+      "question": "When did Rowena adopt her greyhound?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "when",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 2,
+      "question": "What date did Dunstan start the pottery course?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "when",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 3,
+      "question": "What year did Ixora move to Lisbon?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "when",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 4,
+      "question": "When was the last time Pellam visited his aunt?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "when",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "latest",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 5,
+      "question": "How long ago did Rowena finish her thesis?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "when",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 6,
+      "question": "What month did Dunstan buy the canoe?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "when",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 7,
+      "question": "When did Ixora first try rock climbing?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "when",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "earliest",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 8,
+      "question": "On what day did Pellam sign the lease?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "when",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 9,
+      "question": "When did Rowena and Dunstan meet?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "when",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 10,
+      "question": "What time of year does Ixora usually go hiking?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "when",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 11,
+      "question": "How many cats does Rowena have?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "count",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 12,
+      "question": "How many times did Dunstan run the marathon in 2022?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "count",
+        "temporal_constraint": {
+          "start": "2022-01-01T00:00:00Z",
+          "end": "2022-12-31T23:59:59Z",
+          "granularity": "year"
+        },
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 13,
+      "question": "How often does Ixora visit the farmers market?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "count",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 14,
+      "question": "How many books did Pellam read in March 2023?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "count",
+        "temporal_constraint": {
+          "start": "2023-03-01T00:00:00Z",
+          "end": "2023-03-31T23:59:59Z",
+          "granularity": "month"
+        },
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 15,
+      "question": "What is the number of languages Rowena speaks?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "count",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 16,
+      "question": "How many countries has Dunstan travelled to?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "count",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 17,
+      "question": "How many siblings does Ixora have?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "count",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 18,
+      "question": "How many concerts did Pellam attend before June 2021?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "count",
+        "temporal_constraint": {
+          "start": null,
+          "end": "2021-05-31T23:59:59Z",
+          "granularity": "month"
+        },
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 19,
+      "question": "What sports does Rowena play?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "list",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 20,
+      "question": "Which cities has Dunstan lived in?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "list",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 21,
+      "question": "What pets does Ixora own?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "list",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 22,
+      "question": "List the instruments Pellam has learned.",
+      "reference_time": null,
+      "expected": {
+        "question_type": "list",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 23,
+      "question": "Name the hobbies Rowena picked up during 2020.",
+      "reference_time": null,
+      "expected": {
+        "question_type": "list",
+        "temporal_constraint": {
+          "start": "2020-01-01T00:00:00Z",
+          "end": "2020-12-31T23:59:59Z",
+          "granularity": "year"
+        },
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 24,
+      "question": "What gifts did Dunstan receive for his birthday?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "list",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 25,
+      "question": "Which courses did Ixora take in the spring of 2021?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "list",
+        "temporal_constraint": {
+          "start": "2021-01-01T00:00:00Z",
+          "end": "2021-12-31T23:59:59Z",
+          "granularity": "year"
+        },
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 26,
+      "question": "What dishes has Pellam learned to cook?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "list",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 27,
+      "question": "Which friends did Rowena invite to the picnic?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "list",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 28,
+      "question": "What are Dunstan's favourite films?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "list",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 29,
+      "question": "Did Ixora finish the half marathon?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "yes_no",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 30,
+      "question": "Is Pellam still working at the bakery?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "yes_no",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 31,
+      "question": "Has Rowena ever been to Norway?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "yes_no",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 32,
+      "question": "Does Dunstan have a driving licence?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "yes_no",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 33,
+      "question": "Was Ixora at the wedding on 12 August 2022?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "yes_no",
+        "temporal_constraint": {
+          "start": "2022-08-12T00:00:00Z",
+          "end": "2022-08-12T23:59:59Z",
+          "granularity": "day"
+        },
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 34,
+      "question": "Are Rowena's parents living in Porto?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "yes_no",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 35,
+      "question": "Can Pellam play the violin?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "yes_no",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 36,
+      "question": "Did Dunstan move before he changed jobs?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "yes_no",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 37,
+      "question": "Were the twins born in 2019?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "yes_no",
+        "temporal_constraint": {
+          "start": "2019-01-01T00:00:00Z",
+          "end": "2019-12-31T23:59:59Z",
+          "granularity": "year"
+        },
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 38,
+      "question": "Do Ixora and Pellam go to the same gym?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "yes_no",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 39,
+      "question": "Would Rowena enjoy a cooking class?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "inference",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 40,
+      "question": "Is Dunstan likely to adopt another dog?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "inference",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 41,
+      "question": "What might Ixora do after graduating?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "inference",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 42,
+      "question": "Would Pellam probably prefer the mountains or the beach?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "inference",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 43,
+      "question": "Could Rowena be considered an introvert?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "yes_no",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 44,
+      "question": "What kind of job would suit Dunstan?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "inference",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 45,
+      "question": "Is it probable that Ixora will move abroad?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "inference",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 46,
+      "question": "How might Pellam react to a surprise party?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "inference",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 47,
+      "question": "What is the name of Rowena's greyhound?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 48,
+      "question": "Where does Dunstan work?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 49,
+      "question": "Who taught Ixora to swim?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 50,
+      "question": "What colour is Pellam's canoe?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 51,
+      "question": "Why did Rowena quit the choir?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 52,
+      "question": "What did Dunstan cook on 3 May 2023?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": {
+          "start": "2023-05-03T00:00:00Z",
+          "end": "2023-05-03T23:59:59Z",
+          "granularity": "day"
+        },
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 53,
+      "question": "Where did Ixora go in July 2021?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": {
+          "start": "2021-07-01T00:00:00Z",
+          "end": "2021-07-31T23:59:59Z",
+          "granularity": "month"
+        },
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 54,
+      "question": "What did Pellam study at university?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 55,
+      "question": "Which city was Rowena born in?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 56,
+      "question": "What was the first car Dunstan owned?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 57,
+      "question": "What did Ixora do after the conference in October 2022?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": {
+          "start": "2022-11-01T00:00:00Z",
+          "end": null,
+          "granularity": "month"
+        },
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 58,
+      "question": "What did Pellam buy last Saturday?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": "last saturday",
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 59,
+      "question": "What happened to Rowena yesterday?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": "yesterday",
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 60,
+      "question": "Where was Dunstan living in 2018?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": {
+          "start": "2018-01-01T00:00:00Z",
+          "end": "2018-12-31T23:59:59Z",
+          "granularity": "year"
+        },
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 61,
+      "question": "What is the most recent trip Ixora took?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "latest",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 62,
+      "question": "What was Pellam's earliest job?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "earliest",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 63,
+      "question": "What did Rowena do between 5 and 9 June 2023?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": {
+          "start": "2023-06-05T00:00:00Z",
+          "end": "2023-06-09T23:59:59Z",
+          "granularity": "day"
+        },
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 64,
+      "question": "What did Dunstan plant on the 14th of April 2024?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": {
+          "start": "2024-04-14T00:00:00Z",
+          "end": "2024-04-14T23:59:59Z",
+          "granularity": "day"
+        },
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 65,
+      "question": "Where does Rowena work and where does Dunstan live?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": [
+          "Where does Rowena work?",
+          "where does Dunstan live?"
+        ]
+      }
+    },
+    {
+      "id": 66,
+      "question": "What did Ixora bake and did Pellam like it?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": [
+          "What did Ixora bake?",
+          "did Pellam like it?"
+        ]
+      }
+    },
+    {
+      "id": 67,
+      "question": "What do Rowena and Dunstan both collect?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 68,
+      "question": "When did Rowena first visit Oslo?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "when",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "earliest",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 69,
+      "question": "What is Dunstan's first name?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 70,
+      "question": "Who finished first in Ixora's chess club tournament?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 71,
+      "question": "When did Pellam last repaint his boat?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "when",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "latest",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 72,
+      "question": "What is Rowena's last name?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 73,
+      "question": "How long did Dunstan's power cut last?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 74,
+      "question": "What was the last item on Ixora's shopping list?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 75,
+      "question": "When was the first time Pellam went sailing?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "when",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "earliest",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 76,
+      "question": "What did Rowena cook for the first time in June 2022?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": {
+          "start": "2022-06-01T00:00:00Z",
+          "end": "2022-06-30T23:59:59Z",
+          "granularity": "month"
+        },
+        "relative_expression": null,
+        "temporal_ordinal": "earliest",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 77,
+      "question": "What was the most recent concert Dunstan attended?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "latest",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 78,
+      "question": "What did Ixora do last weekend?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": "last weekend",
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 79,
+      "question": "What did Pellam buy yesterday?",
+      "reference_time": "2023-03-15T02:00:00+05:30",
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": {
+          "start": "2023-03-13T00:00:00Z",
+          "end": "2023-03-13T23:59:59Z",
+          "granularity": "day"
+        },
+        "relative_expression": "yesterday",
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 80,
+      "question": "What did Pellam buy last Saturday?",
+      "reference_time": "2023-03-15T12:00:00Z",
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": {
+          "start": "2023-03-11T00:00:00Z",
+          "end": "2023-03-11T23:59:59Z",
+          "granularity": "day"
+        },
+        "relative_expression": "last saturday",
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 81,
+      "question": "What did Rowena plant two weeks ago?",
+      "reference_time": "2024-04-20T12:00:00Z",
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": {
+          "start": "2024-04-01T00:00:00Z",
+          "end": "2024-04-07T23:59:59Z",
+          "granularity": "week"
+        },
+        "relative_expression": "two weeks ago",
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 82,
+      "question": "Where did Dunstan go last weekend?",
+      "reference_time": "2023-03-15T12:00:00Z",
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": {
+          "start": "2023-03-11T00:00:00Z",
+          "end": "2023-03-12T23:59:59Z",
+          "granularity": "approximate"
+        },
+        "relative_expression": "last weekend",
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 83,
+      "question": "Where does Rowena work, and when did she start?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": [
+          "Where does Rowena work?",
+          "when did she start?"
+        ]
+      }
+    },
+    {
+      "id": 84,
+      "question": "What did Ixora and Pellam cook together?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "factoid",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    },
+    {
+      "id": 85,
+      "question": "How many dogs and cats does Rowena have?",
+      "reference_time": null,
+      "expected": {
+        "question_type": "count",
+        "temporal_constraint": null,
+        "relative_expression": null,
+        "temporal_ordinal": "none",
+        "sub_queries": []
+      }
+    }
+  ]
+}

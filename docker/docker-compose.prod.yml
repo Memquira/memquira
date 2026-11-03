@@ -1,0 +1,111 @@
+# Self-hosted Memquira stack: the memory API (memcore-api) + PostgreSQL 16 + Qdrant 1.18 on one Linux host.
+#
+#   cp .env.production.example .env.production        # replace every CHANGE_ME, then chmod 600
+#   docker compose --env-file .env.production -f docker/docker-compose.prod.yml up -d --build
+#   ./scripts/ops/bootstrap_admin_key.sh my-org        # first admin key (database auth), see docs/deployment.md
+#
+# Network layout
+#   backend  internal network: postgres, qdrant, memcore. No route to the internet, no published ports.
+#   egress   memcore only: outbound HTTPS to the LLM / embedding provider.
+#   The API listens on 127.0.0.1:${MEMQUIRA_BIND_PORT} only. Put a TLS-terminating reverse proxy in front of
+#   it; never publish it, PostgreSQL or Qdrant on a public interface.
+
+name: memquira
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  postgres:
+    image: postgres:16.14@sha256:081f1bc7bd5e143dbb6e487b710bbc27712cdcfaced4c071b8e47349aa1b4171
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: memcore
+      POSTGRES_USER: memcore
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memcore -d memcore"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    mem_limit: ${MEMQUIRA_POSTGRES_MEM_LIMIT:-1g}
+    cpus: ${MEMQUIRA_POSTGRES_CPUS:-1.0}
+    logging: *logging
+
+  qdrant:
+    image: qdrant/qdrant:v1.18.0@sha256:b3063c673f3973877c038eeecc392bad5011f072ee7892b56c9a8e204a3bdea9
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+      # Snapshots are written to /qdrant/snapshots, outside the storage directory.
+      - qdrant_snapshots:/qdrant/snapshots
+    networks: [backend]
+    healthcheck:
+      # The image has no curl; probe the REST port with bash's /dev/tcp.
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    mem_limit: ${MEMQUIRA_QDRANT_MEM_LIMIT:-1g}
+    cpus: ${MEMQUIRA_QDRANT_CPUS:-1.0}
+    logging: *logging
+
+  memcore:
+    image: ${MEMQUIRA_IMAGE:-memquira:local}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        CARGO_FEATURES: postgres,qdrant
+        APP_VERSION: ${APP_VERSION:-0.1.0}
+        GIT_SHA: ${GIT_SHA:-unknown}
+        BUILD_TIMESTAMP: ${BUILD_TIMESTAMP:-unknown}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    env_file:
+      # Relative paths resolve from this directory (docker/); set MEMQUIRA_ENV_FILE to an absolute path.
+      - ${MEMQUIRA_ENV_FILE:-../.env.production}
+    environment:
+      # Fixed for this stack; everything else comes from the env file.
+      MEMCORE_HOST: 0.0.0.0
+      MEMCORE_PORT: 8080
+      MEMCORE_STORAGE_MODE: production
+      MEMCORE_FACT_BACKEND: postgres
+      MEMCORE_EVENT_BACKEND: postgres
+      MEMCORE_POSTGRES_URL: postgres://memcore:${POSTGRES_PASSWORD}@postgres:5432/memcore
+      MEMCORE_VECTOR_BACKEND: qdrant
+      # The Rust client speaks gRPC: port 6334, not the REST port 6333.
+      MEMCORE_QDRANT_URL: http://qdrant:6334
+    ports:
+      - "127.0.0.1:${MEMQUIRA_BIND_PORT:-8080}:8080"
+    networks: [backend, egress]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    mem_limit: ${MEMQUIRA_MEMCORE_MEM_LIMIT:-1g}
+    cpus: ${MEMQUIRA_MEMCORE_CPUS:-1.0}
+    stop_grace_period: 40s
+    logging: *logging
+
+networks:
+  backend:
+    internal: true
+  egress: {}
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  qdrant_snapshots:

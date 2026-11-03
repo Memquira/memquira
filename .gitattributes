@@ -1,0 +1,10 @@
+# The vendored Swagger UI files are embedded with include_bytes! and must keep their exact bytes
+# (no CRLF conversion) in every checkout and `git archive` export; assets/swagger-ui/SHA256SUMS records them.
+crates/memcore-api/assets/swagger-ui/** -text
+# The licence and notice files that ship in the image and the release archives keep LF on every checkout, so the
+# packaged bytes do not depend on the build host (scripts/release/package.py, docker/Dockerfile).
+LICENSE text eol=lf
+licenses/** text eol=lf
+# Shell scripts, SQL migrations and deployment files keep LF on every checkout (they run in Linux containers).
+*.sh text eol=lf
+*.sql text eol=lf

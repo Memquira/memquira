@@ -1,0 +1,96 @@
+[package]
+name = "memcore-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "memcore_api"
+path = "src/lib.rs"
+
+[features]
+default = []
+postgres = ["memcore-storage/postgres"]
+# Launch AR-091 (owner L3): the legacy `lancedb` feature was removed; MEMCORE_VECTOR_BACKEND=lancedb is refused at
+# startup, as it already was in every build without that feature.
+qdrant = ["memcore-storage/qdrant"]
+redis-cache = ["memcore-storage/redis-cache"]
+local-rerank = ["memcore-providers/local-rerank"]
+bedrock-rerank = ["memcore-providers/bedrock-rerank"]
+
+[[bin]]
+name = "memcore-api"
+path = "src/main.rs"
+
+[[bin]]
+name = "export_openapi"
+path = "src/bin/export_openapi.rs"
+
+[[bin]]
+name = "memcore-maintenance"
+path = "src/bin/memcore_maintenance.rs"
+
+[[test]]
+name = "bootstrap_postgres_api"
+required-features = ["postgres"]
+
+[[test]]
+name = "database_auth_api"
+
+[[test]]
+name = "qdrant_vectors_api"
+required-features = ["qdrant"]
+
+[[test]]
+name = "qdrant_write_modes_lifecycle"
+required-features = ["qdrant"]
+
+[[test]]
+name = "concurrent_fact_updates"
+required-features = ["qdrant"]
+
+[[test]]
+name = "maintenance_forget_user"
+required-features = ["qdrant"]
+
+[dependencies]
+metrics = "0.24"
+metrics-exporter-prometheus = "0.18"
+axum = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+http-body-util = "0.1"
+memcore-common = { path = "../memcore-common" }
+memcore-config = { path = "../memcore-config" }
+memcore-core = { path = "../memcore-core" }
+memcore-providers = { path = "../memcore-providers" }
+memcore-storage = { path = "../memcore-storage", default-features = false, features = ["sqlite"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "time"] }
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+utoipa = { version = "5", features = ["chrono", "uuid"] }
+# Launch AR-091: Swagger UI is served from the vendored `assets/swagger-ui/` (src/routes/swagger_ui.rs), not by
+# `utoipa-swagger-ui`, whose build script depended on the vulnerable `zip` 3 crate.
+uuid = { version = "1", features = ["serde", "v4"] }
+async-trait = "0.1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_System_ProcessStatus", "Win32_System_Threading"] }
+
+[dev-dependencies]
+hex = "0.4"
+http-body-util = "0.1"
+# Launch AR-091: the Swagger UI asset test checks each embedded file against assets/swagger-ui/SHA256SUMS.
+sha2 = "0.10"
+# Launch T3c: Qdrant lifecycle tests inspect points directly (same version as memcore-storage).
+qdrant-client = "1.18"
+tempfile = "3"
+wiremock = "0.6"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "test-util", "io-util", "net", "sync", "time"] }
+tower = { version = "0.5", features = ["util"] }

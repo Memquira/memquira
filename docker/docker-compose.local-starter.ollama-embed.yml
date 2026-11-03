@@ -1,0 +1,34 @@
+# Fallback for the No-AWS Local Starter: embeddings from Ollama instead of TEI (TEI's CPU image is
+# amd64-only, so use this on arm64 hosts or wherever TEI does not run).
+#
+#   docker compose -f docker/docker-compose.local-starter.yml \
+#                  -f docker/docker-compose.local-starter.ollama-embed.yml up -d --build
+#
+# Embedding model: nomic-embed-text v1.5 (768-d) with its task prefixes. Quality label:
+# compatible-unvalidated, exact-text dedup only. This is a DIFFERENT embedding identity from the TEI
+# profile: start it on fresh volumes (`down -v`, or another project name with `-p`); memcore refuses
+# to start on Qdrant stores written by the other profile.
+
+services:
+  tei:
+    # Not started with this override.
+    profiles: ["tei"]
+
+  ollama-pull:
+    environment:
+      STARTER_PULL_MODELS: "${STARTER_LLM_MODEL:-qwen2.5:3b-instruct} ${STARTER_OLLAMA_EMBEDDING_MODEL:-nomic-embed-text:v1.5}"
+
+  memcore:
+    environment:
+      MEMCORE_EMBEDDING_MODEL: ${STARTER_OLLAMA_EMBEDDING_MODEL:-nomic-embed-text:v1.5}
+      MEMCORE_EMBEDDING_MODEL_REVISION: ${STARTER_OLLAMA_EMBEDDING_DIGEST:-ollama-library-nomic-embed-text-v1.5}
+      MEMCORE_EMBEDDING_SERVING_VARIANT: ollama-0.6.8
+      MEMCORE_EMBEDDING_BASE_URL: http://ollama:11434/v1
+      MEMCORE_EMBEDDING_DIMENSIONS: 768
+      MEMCORE_EMBEDDING_QUERY_PREFIX: "search_query: "
+      MEMCORE_EMBEDDING_DOCUMENT_PREFIX: "search_document: "
+    depends_on: !override
+      qdrant:
+        condition: service_started
+      ollama-pull:
+        condition: service_completed_successfully

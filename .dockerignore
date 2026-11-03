@@ -1,0 +1,46 @@
+# Keep the Docker build context small and free of secrets / local artifacts.
+# Context is the repository root (see docker-compose *.yml).
+
+.git/
+.github/
+.vscode/
+.idea/
+target/
+node_modules/
+
+.env
+.env.*
+!.env.example
+
+backups/
+data/
+*.db
+*.sqlite
+*.log
+
+# Local security / SBOM artifacts
+sbom.spdx.json
+sbom.cdx.json
+trivy-results.*
+
+.DS_Store
+Thumbs.db
+**/*.png
+# The Swagger UI favicons are compiled into memcore-api (include_bytes!).
+!crates/memcore-api/assets/swagger-ui/*.png
+**/agent-transcripts/
+terminals/
+
+# Docs are not required for the binary build
+docs/
+project_plan.md
+
+# Developer-preview apps: dependencies, build output and local secrets never enter a build context.
+**/node_modules/
+apps/web/dist/
+**/.wrangler/
+**/.dev.vars
+**/.stack/
+**/screenshots/
+**/test-results/
+**/playwright-report/
