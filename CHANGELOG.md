@@ -3,7 +3,7 @@
 All notable changes to this project are documented in this file. The project follows
 [Semantic Versioning](https://semver.org/); before 1.0, minor versions may contain breaking changes.
 
-## [0.1.0] - 2026-11-03
+## [0.1.0] - 2026-11-06
 
 Initial open-source release.
 
