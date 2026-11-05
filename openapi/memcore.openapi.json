@@ -4,8 +4,8 @@
     "title": "memcore API",
     "description": "Production-grade long-term memory engine for AI agents. Protected routes require `Authorization: Bearer <api_key>` and `X-Organization-ID`. `MEMCORE_AUTH_MODE=dev` accepts `MEMCORE_DEV_API_KEY` for local development without scope checks.",
     "license": {
-      "name": "AGPL-3.0-or-later",
-      "identifier": "AGPL-3.0-or-later"
+      "name": "Apache-2.0",
+      "identifier": "Apache-2.0"
     },
     "version": "0.1.0"
   },

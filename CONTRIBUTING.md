@@ -33,5 +33,6 @@ cargo test --workspace
 
 ## Licensing of contributions
 
-Memquira is licensed under the GNU Affero General Public License v3.0 or later. By submitting a contribution you
-agree that it is licensed under the same terms, and you confirm that you have the right to submit it.
+Memquira is licensed under the Apache License, Version 2.0. Unless you state otherwise, any contribution you
+intentionally submit for inclusion is licensed under the same terms, without any additional terms or conditions
+(section 5 of the licence), and by submitting it you confirm that you have the right to do so.

@@ -16,3 +16,6 @@ Initial open-source release.
 - OpenAI-compatible providers with retries, circuit breaker, concurrency limits and guardrails.
 - Rate limiting, admission control, quotas, health probes, Prometheus metrics, OpenAPI and Swagger UI.
 - Docker image and Compose stacks for local development and self-hosting.
+
+Licensed under the Apache License, Version 2.0. The repository commits published before this release
+(`a117259` to `ab149c7`) were made available under AGPL-3.0-or-later; copies obtained under those terms keep them.

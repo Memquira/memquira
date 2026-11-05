@@ -191,8 +191,7 @@ the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
-Memquira is licensed under the **GNU Affero General Public License v3.0 or later** ([LICENSE](LICENSE)). If you run
-a modified version as a network service, the AGPL requires you to offer its source to the users of that service.
-Third-party notices: [licenses/NOTICE](licenses/NOTICE) and
-[licenses/THIRD_PARTY_LICENSES.txt](licenses/THIRD_PARTY_LICENSES.txt). The vendored Swagger UI is Apache-2.0
+Memquira is licensed under the **Apache License, Version 2.0** ([LICENSE](LICENSE)). Copyright and third-party
+notices: [licenses/NOTICE](licenses/NOTICE) and
+[licenses/THIRD_PARTY_LICENSES.txt](licenses/THIRD_PARTY_LICENSES.txt). The vendored Swagger UI is also Apache-2.0
 ([crates/memcore-api/assets/swagger-ui/LICENSE](crates/memcore-api/assets/swagger-ui/LICENSE)).
