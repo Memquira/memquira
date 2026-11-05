@@ -43,14 +43,50 @@ fn fact(id: Uuid) -> Fact {
     .unwrap()
 }
 
-/// A SQLite store migrated and written by the project's own code; closed (WAL checkpointed).
+/// The fixture's pool: the product's SQLite options (WAL, synchronous, busy timeout) on a single
+/// connection. With several pooled connections, `close` can return while one SQLite handle is
+/// still closing on its worker thread; that late close then checkpoints or removes `-wal` /
+/// `-shm` during the preflight run and breaks both the WAL guard and the read-only check.
+async fn fixture_pool(url: &str) -> sqlx::SqlitePool {
+    let options = memcore_storage::startup_checks::sqlite_connect_options(url).unwrap();
+    sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .unwrap()
+}
+
+/// Checkpoints the WAL into the main file, verifies the checkpoint completed, then closes the
+/// pool, so the store on disk is a quiescent snapshot instead of relying on SQLite's
+/// checkpoint-on-close.
+async fn checkpoint_and_close(pool: sqlx::SqlitePool, path: &Path) {
+    let (busy, log, checkpointed): (i64, i64, i64) =
+        sqlx::query_as("PRAGMA wal_checkpoint(TRUNCATE)")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    // TRUNCATE reports (0, 0, 0) only when every frame was copied and the WAL truncated.
+    assert_eq!(
+        (busy, log, checkpointed),
+        (0, 0, 0),
+        "the WAL checkpoint did not complete"
+    );
+    pool.close().await;
+    let wal = PathBuf::from(format!("{}-wal", path.display()));
+    assert!(
+        wal.metadata().map(|m| m.len() == 0).unwrap_or(true),
+        "the -wal file is not empty after a completed checkpoint"
+    );
+}
+
+/// A SQLite store migrated and written by the project's own code; checkpointed and closed.
 async fn store(dir: &Path, ids: &[Uuid], delete: Option<Uuid>) -> PathBuf {
     let path = dir.join("memcore.db");
     let url = format!(
         "sqlite://{}?mode=rwc",
         path.display().to_string().replace('\\', "/")
     );
-    let pool = memcore_storage::connect_sqlite_pool(&url).await.unwrap();
+    let pool = fixture_pool(&url).await;
     memcore_storage::check_sqlite_pool_startup(
         &pool,
         memcore_storage::StorageMigrationMode::Auto,
@@ -66,20 +102,7 @@ async fn store(dir: &Path, ids: &[Uuid], delete: Option<Uuid>) -> PathBuf {
     if let Some(id) = delete {
         facts.soft_delete_fact(&tenant, id).await.unwrap();
     }
-    pool.close().await;
-    // sqlx checkpoints the WAL on its worker thread after `close` returns: wait until the store is
-    // settled (no `-wal` content, stable bytes) so "before" is a quiescent snapshot.
-    let wal = PathBuf::from(format!("{}-wal", path.display()));
-    let mut last = None;
-    for _ in 0..100 {
-        let now = std::fs::read(&path).ok();
-        let wal_empty = wal.metadata().map(|m| m.len() == 0).unwrap_or(true);
-        if wal_empty && now.is_some() && now == last {
-            break;
-        }
-        last = now;
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
+    checkpoint_and_close(pool, &path).await;
     path
 }
 
@@ -205,7 +228,7 @@ async fn integration_schema_14_store_is_behind_the_migration_15_candidate() {
         "sqlite://{}?mode=rwc",
         path.display().to_string().replace('\\', "/")
     );
-    let pool = memcore_storage::connect_sqlite_pool(&url).await.unwrap();
+    let pool = fixture_pool(&url).await;
     let schema_14: Vec<_> = all.iter().filter(|m| m.version <= 14).cloned().collect();
     SqliteMigrationRunner::new(pool.clone())
         .apply_pending_migrations(&schema_14)
@@ -218,17 +241,7 @@ async fn integration_schema_14_store_is_behind_the_migration_15_candidate() {
         .insert_fact(&tenant, fact(v4(1)))
         .await
         .unwrap();
-    pool.close().await;
-    let settled = || {
-        let wal = PathBuf::from(format!("{}-wal", path.display()));
-        wal.metadata().map(|m| m.len() == 0).unwrap_or(true)
-    };
-    for _ in 0..100 {
-        if settled() {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
+    checkpoint_and_close(pool, &path).await;
 
     let before = bytes(&path);
     let (code, report, text) = run(&sqlite_env(&path), FIRST);
@@ -251,7 +264,7 @@ async fn integration_schema_14_store_is_behind_the_migration_15_candidate() {
     );
 
     // The product's own startup migration brings it to the candidate's schema.
-    let pool = memcore_storage::connect_sqlite_pool(&url).await.unwrap();
+    let pool = fixture_pool(&url).await;
     memcore_storage::check_sqlite_pool_startup(
         &pool,
         memcore_storage::StorageMigrationMode::Auto,
@@ -259,13 +272,7 @@ async fn integration_schema_14_store_is_behind_the_migration_15_candidate() {
     )
     .await
     .unwrap();
-    pool.close().await;
-    for _ in 0..100 {
-        if settled() {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
+    checkpoint_and_close(pool, &path).await;
     let (code, after, text) = run(&sqlite_env(&path), FIRST);
     assert_eq!(
         (code, after["outcome"].as_str()),

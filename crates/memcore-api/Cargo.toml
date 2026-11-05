@@ -88,6 +88,8 @@ hex = "0.4"
 http-body-util = "0.1"
 # Launch AR-091: the Swagger UI asset test checks each embedded file against assets/swagger-ui/SHA256SUMS.
 sha2 = "0.10"
+# The preflight CLI tests checkpoint their SQLite fixtures explicitly (same version as memcore-storage).
+sqlx = { version = "0.8", default-features = false, features = ["sqlite"] }
 # Launch T3c: Qdrant lifecycle tests inspect points directly (same version as memcore-storage).
 qdrant-client = "1.18"
 tempfile = "3"
