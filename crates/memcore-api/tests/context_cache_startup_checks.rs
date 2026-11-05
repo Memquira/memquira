@@ -8,9 +8,11 @@
 //! never accept a connection on the API port and, for Redis, never connect to the configured
 //! Redis address (a test-owned listener that must see zero connections).
 
+use std::collections::BTreeSet;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::process::{Child, Command, Stdio};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 const BIN: &str = env!("CARGO_BIN_EXE_memcore-api");
@@ -19,12 +21,26 @@ const ORG: &str = "org_cache_gate";
 const USER: &str = "user_cache_gate";
 const SECRET: &str = "cg-s3cret-pass";
 
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .expect("bind")
-        .local_addr()
-        .expect("addr")
-        .port()
+/// The ports handed out to this binary's tests; its lock also serialises reserving a port with
+/// spawning a child. A child spawned while a reservation listener is open inherits it and keeps it
+/// listening until its `exec`, so a "released" port could still accept a connection that the
+/// refused-start checks would blame on memcore-api. Under this lock no child is spawned while a
+/// reservation listener exists (`Command::spawn` returns after the child's `exec`), and no two
+/// tests get the same port.
+static PORTS: Mutex<BTreeSet<u16>> = Mutex::new(BTreeSet::new());
+
+fn ports() -> MutexGuard<'static, BTreeSet<u16>> {
+    PORTS.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// A loopback listener on a port no other test in this binary was given (callers hold `ports()`).
+fn reserve(used: &mut BTreeSet<u16>) -> TcpListener {
+    loop {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        if used.insert(listener.local_addr().expect("addr").port()) {
+            return listener;
+        }
+    }
 }
 
 /// The OS variables a Windows / Unix process needs; nothing memcore-specific.
@@ -56,7 +72,10 @@ struct Api {
 
 fn spawn(vars: &[(&str, String)]) -> Api {
     let dir = tempfile::tempdir().expect("tempdir");
-    let port = free_port();
+    // Held until this child is spawned, so no child (this one or another test's) inherits a
+    // reservation listener.
+    let mut used = ports();
+    let port = reserve(&mut used).local_addr().expect("addr").port();
     let mut command = Command::new(BIN);
     command
         .env_clear()
@@ -87,12 +106,17 @@ fn spawn(vars: &[(&str, String)]) -> Api {
     }
 }
 
+/// Whether something accepts connections on `port`. A probe connected to itself (the OS gave it
+/// `port` as its own source port, which Windows does because `bind(0)` and outgoing connections
+/// share one port range) is TCP simultaneous open and proves there is no listener.
 fn listening(port: u16) -> bool {
     TcpStream::connect_timeout(
         &format!("127.0.0.1:{port}").parse().expect("addr"),
         Duration::from_millis(200),
     )
-    .is_ok()
+    .is_ok_and(|stream| {
+        !matches!((stream.local_addr(), stream.peer_addr()), (Ok(local), Ok(peer)) if local == peer)
+    })
 }
 
 fn output_of(child: &mut Child) -> String {
@@ -261,7 +285,7 @@ fn cg2_cg11_explicit_disabled_starts_and_recomputes_every_request() {
 /// any connection; the configured Redis address is a test-owned listener that must stay idle.
 #[test]
 fn cg3_cg4_redis_is_refused_without_any_connection_attempt() {
-    let redis = TcpListener::bind("127.0.0.1:0").expect("bind fake redis");
+    let redis = reserve(&mut ports());
     redis.set_nonblocking(true).expect("nonblocking");
     let redis_port = redis.local_addr().expect("addr").port();
     for extra in [
