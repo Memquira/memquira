@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/Memquira/memquira/security/advisories/new
+    about: Report vulnerabilities privately through GitHub. Never open a public issue for a security problem.
+  - name: Documentation
+    url: https://github.com/Memquira/memquira/tree/main/docs
+    about: Getting started, configuration, deployment, operations and the API reference.

@@ -4,8 +4,9 @@ Memquira is early-stage software (0.x) and has not been independently audited.
 
 ## Reporting a vulnerability
 
-Please do **not** open a public issue for a security problem. Use the private **Report a vulnerability** form on
-this repository's **Security** tab (GitHub private vulnerability reporting) and include:
+Please do **not** open a public issue for a security problem. Use the private
+[**Report a vulnerability**](https://github.com/Memquira/memquira/security/advisories/new) form on this repository's
+**Security** tab (GitHub private vulnerability reporting) and include:
 
 - the version (`GET /api/v1/version`) and deployment shape (auth mode, storage backends, providers);
 - steps to reproduce and the impact you observed (for example cross-tenant access, key disclosure, authentication

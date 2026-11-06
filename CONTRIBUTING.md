@@ -5,7 +5,8 @@ Thanks for your interest in Memquira. Bug reports, documentation fixes and focus
 ## Before you start
 
 - Search existing issues first. For a new feature or a change in behaviour, open an issue to discuss it before
-  writing code.
+  writing code. [New issues](https://github.com/Memquira/memquira/issues/new/choose) use a form: bug report, feature
+  request, or documentation and usage question.
 - Report security problems privately ([SECURITY.md](SECURITY.md)), never in a public issue.
 - Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 
@@ -29,7 +30,10 @@ cargo test --workspace
 - Never edit a released database migration; add a new one.
 - Do not commit secrets, real customer data, or third-party datasets without a licence that allows
   redistribution.
-- CI (format, clippy, tests, dependency and secret checks) must pass.
+- Every change, including the maintainers' own, reaches `main` through a pull request. All eight CI checks
+  (format, clippy, tests, integration, feature builds, dependency and licence checks, secret scan, Docker image) must
+  pass and review conversations must be resolved before it is merged. How issues and pull requests are triaged:
+  [docs/maintaining.md](docs/maintaining.md).
 
 ## Licensing of contributions
 

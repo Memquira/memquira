@@ -1,0 +1,44 @@
+name: Documentation or usage question
+description: Ask how to use Memquira, or report missing or incorrect documentation.
+labels: ["question", "needs-triage"]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Type
+      options:
+        - Usage or configuration question
+        - Documentation is missing or incorrect
+        - Deployment or self-hosting help
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What do you want to do, and where are you stuck?
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you tried
+      description: Documentation pages you read, commands you ran, and the results.
+  - type: input
+    id: page
+    attributes:
+      label: Documentation page
+      description: Link to the page, if this is about the docs.
+      placeholder: https://github.com/Memquira/memquira/blob/main/docs/getting-started.md
+  - type: input
+    id: version
+    attributes:
+      label: Memquira version
+      placeholder: "0.1.0"
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: This question contains no API keys, tokens, passwords or personal data.
+          required: true
