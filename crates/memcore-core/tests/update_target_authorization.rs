@@ -554,7 +554,7 @@ fn the_event_policy_lets_only_an_undated_standing_fact_change() {
     let dated_old = fact_from(&dated(old_c), &t);
     assert!(refused(guard_related_decision_v23_with_policy(
         &update(dated_old.id),
-        &[dated_old.clone()],
+        std::slice::from_ref(&dated_old),
         &changed,
         EventUpdatePolicy::ChangeMarker
     )));
