@@ -68,6 +68,25 @@ certificates and `curl` for the healthcheck, and ships its licence notices under
 CI runs `cargo audit` and `cargo deny` (advisories, licences, banned crates, allowed sources) and a secret scan on
 every change. Base images are pinned by digest. Run `cargo deny check` before upgrading dependencies.
 
+### Advisory exceptions
+
+Each exception names one advisory id, in both `deny.toml` and `.cargo/audit.toml`. Advisory scanning stays on for
+everything else.
+
+- **RUSTSEC-2026-0459** (CVE-2026-119375): the SQLite copy bundled in `libsqlite3-sys` 0.30.1.
+  - **The flaw:** SQLite before 3.54.0 can return uninitialised memory when it opens a database file together
+    with a crafted sibling `-wal` file whose page size differs.
+  - **Why there is no upgrade yet:** sqlx 0.8 requires `libsqlite3-sys` 0.30, and the fixed 0.39 release needs
+    sqlx 0.9, which requires a newer Rust toolchain than this project's 1.89.
+  - **Why it does not apply:** Memquira opens only the database configured in `MEMCORE_DATABASE_URL`, a file it
+    creates and writes itself. Clients cannot supply database files (import accepts JSON only), and no server or
+    `memcore-maintenance` command opens another SQLite file.
+  - **Residual exposure:** someone who can write to Memquira's data directory could plant such a file pair, but
+    that access already exposes all stored data. Keep the data directory writable only by the Memquira user. Never
+    point `MEMCORE_DATABASE_URL` at a database or `-wal` file from an untrusted source. Use PostgreSQL in
+    production.
+  - **Removal:** when the project moves to an sqlx release that uses `libsqlite3-sys` 0.39 or later.
+
 ## Not provided
 
 Memquira has no end-user authentication (OAuth/OIDC), no WAF or bot protection, no mutual TLS, no field-level

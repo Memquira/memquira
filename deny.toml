@@ -13,10 +13,14 @@ yanked = "warn"
 unmaintained = "workspace"
 unsound = "workspace"
 unused-ignored-advisory = "warn"
-# Launch AR-091: no advisory is ignored. Removed: RUSTSEC-2023-0071 (`rsa` is only a lockfile entry of sqlx's
+# Earlier exceptions, all removed: RUSTSEC-2023-0071 (`rsa` is only a lockfile entry of sqlx's
 # unused MySQL driver, never compiled, so cargo-deny does not encounter it); RUSTSEC-2026-0194 / -0195 (quick-xml),
 # -0098 / -0099 / -0104 (rustls-webpki 0.101) and -0258 (h2 0.3), whose only path, the `lancedb` feature, was removed.
-ignore = []
+# Temporary exception for exactly one advisory (rationale, residual exposure and removal condition:
+# docs/security.md, "Advisory exceptions"). Keep in sync with .cargo/audit.toml.
+ignore = [
+    { id = "RUSTSEC-2026-0459", reason = "bundled SQLite (libsqlite3-sys 0.30.1, pinned by sqlx 0.8): needs a crafted database + -wal pair; Memquira opens only its own database. Remove when sqlx depends on libsqlite3-sys >= 0.39" },
+]
 
 [licenses]
 version = 2
