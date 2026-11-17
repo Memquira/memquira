@@ -9,7 +9,7 @@ ignore = [
     "RUSTSEC-2023-0071",
     # RUSTSEC-2026-0194 / -0195, -0098 / -0099 / -0104 and -0258 were removed with the `lancedb`
     # feature (quick-xml 0.37, rustls-webpki 0.101 and h2 0.3 are no longer in Cargo.lock).
-    # Temporary: bundled SQLite in libsqlite3-sys 0.30.1, pinned by sqlx 0.8 (fix >= 0.39 needs sqlx 0.9).
+    # Temporary accepted risk (not patched): bundled SQLite in libsqlite3-sys 0.30.1, pinned by sqlx 0.8 (fix >= 0.39 needs sqlx 0.9).
     # Rationale and removal condition: docs/security.md, "Advisory exceptions". Same entry in deny.toml.
     "RUSTSEC-2026-0459",
 ]
