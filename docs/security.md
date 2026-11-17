@@ -68,6 +68,39 @@ certificates and `curl` for the healthcheck, and ships its licence notices under
 CI runs `cargo audit` and `cargo deny` (advisories, licences, banned crates, allowed sources) and a secret scan on
 every change. Base images are pinned by digest. Run `cargo deny check` before upgrading dependencies.
 
+### Advisory exceptions
+
+An exception records a risk the project accepts; it is not a fix. Each exception names one advisory id, in both
+`deny.toml` and `.cargo/audit.toml`, and advisory scanning stays on for everything else.
+
+- **RUSTSEC-2026-0459** (CVE-2026-119375): the SQLite copy bundled in `libsqlite3-sys` 0.30.1.
+  - **Status: accepted risk, not patched.** The affected SQLite code is still compiled into every build. The risk
+    is accepted only under the supported deployment trust model below.
+  - **The flaw:** SQLite before 3.54.0 can return uninitialised memory when it opens a database file together
+    with a crafted sibling `-wal` file whose page size differs.
+  - **Why there is no upgrade yet:** sqlx 0.8 requires `libsqlite3-sys` 0.30, and the fixed 0.39 release needs
+    sqlx 0.9, which requires a newer Rust toolchain than this project's 1.89.
+  - **Trust model the acceptance relies on:** Memquira opens only the database configured in `MEMCORE_DATABASE_URL`, a file it
+    creates and writes itself. Clients cannot supply database files (import accepts JSON only), and no server or
+    `memcore-maintenance` command opens another SQLite file.
+  - **Residual exposure:** someone who can write to Memquira's data directory could plant such a file pair, but
+    that access already exposes all stored data. Keep the data directory writable only by the Memquira user. Never
+    point `MEMCORE_DATABASE_URL` at a database or `-wal` file from an untrusted source. Use PostgreSQL in
+    production.
+  - **Removal:** when the project moves to an sqlx release that uses `libsqlite3-sys` 0.39 or later, or sooner if a
+    feature starts opening SQLite files that a less-trusted party could supply.
+  - **Tracking issue:** [#2](https://github.com/Memquira/memquira/issues/2).
+- **RUSTSEC-2026-0543**: `chrono` is unmaintained (all versions).
+  - **Status: accepted risk.** This is a maintenance notice, not a known vulnerability, and no maintained
+    `chrono` release exists to upgrade to. The exception is in `deny.toml` only; `cargo audit` keeps reporting it as
+    a warning.
+  - **Why it is accepted for now:** four workspace crates and sqlx's date-time support use `chrono` directly.
+    Replacing it is a migration across the codebase, not a dependency update.
+  - **Residual exposure:** fixes for any future `chrono` defect may not be released. A future vulnerability
+    advisory against `chrono` is not covered by this exception and fails CI.
+  - **Removal:** after the migration to a maintained date-time crate (`jiff` or `time`).
+  - **Tracking issue:** [#3](https://github.com/Memquira/memquira/issues/3).
+
 ## Not provided
 
 Memquira has no end-user authentication (OAuth/OIDC), no WAF or bot protection, no mutual TLS, no field-level
