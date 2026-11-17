@@ -96,6 +96,57 @@ process-local.
 Settings marked **experimental** or **opt-in; not validated** are off by default and are not recommended for
 production. Turning one on can change the quality tier the server reports to `compatible-unvalidated`.
 
+## Opt-in memory update settings
+
+By default, a stored fact is updated only when the classifier links a new fact to it through the legacy related-fact
+lookup, and a new fact worded almost like a stored one is discarded as a duplicate even when a value differs. The
+settings below change how the legacy ingest path handles corrections and restatements. Each is off by default, needs
+no migration, and can be turned off again at any time; facts that were superseded while a setting was on stay
+superseded. They were evaluated together as one configuration:
+
+```env
+MEMCORE_RELATED_FACT_MATCHER=semantic_v23
+MEMCORE_CLASSIFICATION_PROMPT=operations_v1
+MEMCORE_TEMPORAL_REWRITE=preserving
+MEMCORE_IMPORTANCE_POLICY=durable
+MEMCORE_CLASSIFICATION_SKIP_WHEN_NO_RELATED=true
+MEMCORE_UNKNOWN_MEMORY_TYPE=other
+MEMCORE_EVENT_UPDATE_POLICY=change_marker
+MEMCORE_DEDUP_VALUE_GUARD=on
+```
+
+With this configuration:
+
+- related facts are found by meaning (vector similarity within the same user and subject), so the classifier sees
+  the fact a correction refers to;
+- an Update or Delete decision supersedes the old fact instead of overwriting or deleting it: the old row keeps
+  `superseded_at` and `superseded_by`, search and context leave it out, and `include_history` returns it with a
+  `lifecycle` object;
+- a near-duplicate that states a different value (a date, number, name or negation) is no longer silently
+  discarded, and reaches the classifier instead;
+- the classification call is skipped when nothing related is found, which reduces classifier calls.
+
+**Evidence and status.** The maintainers evaluated this configuration on synthetic English conversations with one
+chat model and one embedding model, using the legacy consolidation mode and structured extraction (`retentive`). It
+applied substantially more corrections than the defaults, with no deletions and no loss of facts that should have
+been kept. It has not been evaluated on public benchmarks, with other models, or in other languages, and it is not
+the default. Any of these settings except `MEMCORE_CLASSIFICATION_SKIP_WHEN_NO_RELATED` makes the server report the
+quality tier `compatible-unvalidated`.
+
+**Known limitations.**
+
+- **Wrong target.** For a fact that is not an event, the guard checks only that the target was among the offered
+  facts and has the same subject. If the model picks the wrong offered fact, that fact is superseded. It stays in
+  the store as history (`include_history`), but it no longer appears in search or context. This was observed in
+  evaluation, rarely.
+- **Missed corrections.** Often the classifier still adds a correction as a new fact, so the old and new values both
+  stay current. This remains the most common failure.
+- **English-only heuristics.** The value guard's normaliser and the `change_marker` change words assume English.
+- **Cost.** The semantic matcher adds one vector search and up to 20 row reads per candidate and offers more related
+  facts to the classifier; a near-duplicate that the value guard keeps can cost one classifier call. With the skip
+  setting on, the evaluated configuration made fewer classifier calls than the defaults.
+- **Scope.** The settings apply to the legacy ingest path only (`MEMCORE_CONSOLIDATION_MODE=legacy`, the default).
+
 ## Reference
 
 Columns: whether the variable is required, its default when unset, whether it is a secret, and typical local and
@@ -233,6 +284,11 @@ production values.
 | `MEMCORE_TEMPORAL_REWRITE` | no | `legacy` | no | `legacy` | `legacy` | **Opt-in; not answer-validated.** How structured extraction writes a dated fact's sentence. `legacy` (default, the reference behaviour) prefixes the settled date and removes the model's time expression, whatever it is (for example, "The project kickoff will be in Room 4B." with the model expression "in Room 4B" was stored as "On 28 February 2026, The project kickoff will be."). `preserving` removes only an expression the deterministic resolver recognised and only where the sentence stays complete: a span with no time vocabulary gives no event time; a recurrence ("every Sunday", "each month") is non-datable; a model date the resolver could not check is prefixed but nothing is removed; a date that is the sentence's value (after is / to / until / by / for / due) stays in place (written dates as written, relative ones replaced by the settled date); otherwise the legacy output byte for byte. Event time, expression and source message ids stay in the structure. `preserving` is a reference-contract mismatch (`compatible-unvalidated`) |
 | `MEMCORE_IMPORTANCE_POLICY` | no | `legacy` | no | `legacy` | `legacy` | **Opt-in; not answer-validated.** `legacy` (default): a candidate is stored when its adjusted importance reaches `MEMCORE_MIN_IMPORTANCE`. `durable` also stores a candidate of any type but `conversation` and `system` whose adjusted importance is at least 0.5 (the extractor's medium rating; for example, plain facts such as "The cloud provider is AWS." typed `entity` / `other` / `event` were extracted at 0.5 and discarded). The short- and vague-content penalties apply first; ratings below 0.5 are still dropped; dedup is unchanged. A reference-contract mismatch |
 | `MEMCORE_CLASSIFICATION_PROMPT` | no | `legacy` | no | `legacy` | `legacy` | **experimental and opt-in; not measured with a real model.** Instructions of the legacy-path fact-classification request. `legacy` (default) is the production prompt, byte-identical. `operations_v1` defines Add / Update / Delete / NoOp, the distinctions that decide them and six invented examples; the JSON schema, payload, parser and operation allow-list are unchanged. A reference-contract mismatch |
+| `MEMCORE_CLASSIFICATION_SKIP_WHEN_NO_RELATED` | no | `false` | no | `false` | `false` | **Opt-in.** Legacy ingest path: a candidate whose related-fact lookup returns no fact is added without the classification call (that call can only lead to an Add); with related facts the classifier runs unchanged. Skipped calls are counted by `memcore_ingest_classification_skipped_total`. The quality status lists it as a variant; it does not change the quality tier. A skipped call is not charged to the provider call guard, and a classification error can no longer fail an ingest whose candidate has no related facts |
+| `MEMCORE_UNKNOWN_MEMORY_TYPE` | no | `skip` | no | `skip` | `skip` | **Opt-in; not answer-validated.** What extraction does with a fact whose memory type is outside the vocabulary (for example `membership`, `Activity`). `skip` (default, the reference behaviour) discards it and counts it as `unknown_memory_type`; `other` keeps it with memory type `other` and counts it as a fallback (`memory_type_fallback` in the extraction-loss log line). `other` is a reference-contract mismatch (`compatible-unvalidated`) |
+| `MEMCORE_EVENT_UPDATE_POLICY` | no | `history` | no | `history` | `history` | **Experimental and opt-in; only with `MEMCORE_RELATED_FACT_MATCHER=semantic_v23`.** `history` (default): an `event` fact is history and a classifier Update targeting it is stored as an Add (`event_is_history`). `change_marker`: an Update may supersede an `event` fact without an event time when the candidate has no event time either and states a change in whole words (now, no longer, anymore, instead, moved, switched, changed, stopped, nowadays, these days, used to, from now on), so a standing fact a model typed as an event ("The choir rehearses in the church hall") can follow its change; a second event of the same kind without a change word stays an Add. English-only heuristic. A reference-contract mismatch |
+| `MEMCORE_DEDUP_VALUE_GUARD` | no | `off` | no | `off` | `off` | **Experimental and opt-in; legacy ingest path.** `off` (default): a candidate whose wording is a near-duplicate of a stored fact of the same memory type (token Jaccard ≥ 0.90, or embedding cosine ≥ the dedup threshold) is discarded as a NOOP before the related-fact lookup, whatever its values. `on`: such a near-duplicate is discarded only when it is value-compatible: it states no value the matched fact lacks (numbers, number words, ordinals, dates, months, weekdays, clock times, currencies, identifiers containing digits, capitalised names; "16th" = "16", "two" = "2", "$1,620" = "1620 dollars"), both or neither are negated, and their settled event times overlap. Otherwise the candidate continues to the related-fact lookup and the classifier like any other candidate; the guard never decides an update. Exact-text dedup, retries and receipts are unchanged. A candidate that reaches the classifier can cost one classifier call. Counted by `memcore_dedup_value_guard_total{path, outcome}` (`path` = `content` \| `embedding`; `outcome` = `duplicate`, value-compatible and discarded as before, or `new_value` / `polarity` / `event_time`, which kept the candidate). English-only heuristic. A reference-contract mismatch |
+| `MEMCORE_RELATED_FACT_SIMILARITY_FLOOR` | no | `0.5` | no | `0.5` | `0.5` | Cosine floor of the `semantic` and `semantic_v23` related-fact matchers (0.0-1.0; previously the constant consolidation default 0.5). No effect with the `legacy` matcher. Any value other than 0.5 is a reference-contract mismatch. In the maintainers' replays, lower floors raised related-but-distinct offers faster than recall |
 | `MEMCORE_ENTITIES_ENABLED` | no | `false` | no | `false` | `false` | **Experimental; keep off in production:** not validated to production-quality entity accuracy (an accuracy audit did not pass); no entity-aware retrieval. Entity layer: after an add has stored its facts, one entity-annotation request per extraction window (the fact-extraction request is unchanged), deterministic resolution, and entity / link / relation storage; serves `GET /api/v1/users/{user_id}/entities[/{entity_id}]`. Entity names are PII-redacted like messages. Off: no annotation or confirmation requests, no entity rows, and every existing response is unchanged. Entities are removed by user deletion and fact deletion, follow fact retention (links of pruned facts go, and entities left without a link), and are exported as `memcore.user_export.v3`. **Lifecycle does not depend on the flag:** with it off, forget-user, fact deletion, retention, export and import still act on entity data stored while it was on (the read endpoints stay off). Name embeddings record their embedding model and dimension and are compared only within one model and dimension |
 | `MEMCORE_ENTITY_NAME_SIMILARITY_THRESHOLD` | no | `0.70` | no | | | Name-embedding similarity (0–1) at or above which a mention is a candidate match for a stored entity of a compatible type (predeclared before any entity measurement) |
 | `MEMCORE_ENTITY_LLM_CONFIRMATION_ENABLED` | no | `true` | no | | | Ask the model to confirm a candidate match, at most once per new entity. Off: a candidate that is not an exact name or alias becomes a new entity |

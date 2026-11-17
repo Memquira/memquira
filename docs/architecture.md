@@ -63,7 +63,10 @@ auth) and the `X-Organization-ID` header; the user from the request.
 4. Extract candidate facts with the LLM, window by window (`MEMCORE_EXTRACTION_WINDOW_TURNS`). Structured
    extraction attributes each fact to a speaker, resolves dates and cites its source messages.
 5. For each candidate, find related stored facts and ask the classifier for a decision: add, update an existing
-   fact, delete one, or no-op. Exact duplicates are caught without a model call.
+   fact, delete one, or no-op. Exact duplicates are caught without a model call. The
+   [opt-in memory update settings](configuration.md#opt-in-memory-update-settings) find related facts by
+   meaning, keep a corrected fact's predecessor as history, and stop discarding near-duplicates whose values
+   differ.
 6. Embed what is stored and write the vector to Qdrant; write the fact and an audit event to the SQL store.
 7. Complete the journal entry. A failure in steps 4–6 rolls the operation back instead of leaving a partial write.
 
