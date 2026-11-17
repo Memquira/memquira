@@ -11,5 +11,6 @@ ignore = [
     # feature (quick-xml 0.37, rustls-webpki 0.101 and h2 0.3 are no longer in Cargo.lock).
     # Temporary accepted risk (not patched): bundled SQLite in libsqlite3-sys 0.30.1, pinned by sqlx 0.8 (fix >= 0.39 needs sqlx 0.9).
     # Rationale and removal condition: docs/security.md, "Advisory exceptions". Same entry in deny.toml.
+    # Tracking issue: https://github.com/Memquira/memquira/issues/2
     "RUSTSEC-2026-0459",
 ]

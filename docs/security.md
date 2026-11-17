@@ -89,6 +89,7 @@ An exception records a risk the project accepts; it is not a fix. Each exception
     production.
   - **Removal:** when the project moves to an sqlx release that uses `libsqlite3-sys` 0.39 or later, or sooner if a
     feature starts opening SQLite files that a less-trusted party could supply.
+  - **Tracking issue:** [#2](https://github.com/Memquira/memquira/issues/2).
 - **RUSTSEC-2026-0543**: `chrono` is unmaintained (all versions).
   - **Status: accepted risk.** This is a maintenance notice, not a known vulnerability, and no maintained
     `chrono` release exists to upgrade to. The exception is in `deny.toml` only; `cargo audit` keeps reporting it as
@@ -98,6 +99,7 @@ An exception records a risk the project accepts; it is not a fix. Each exception
   - **Residual exposure:** fixes for any future `chrono` defect may not be released. A future vulnerability
     advisory against `chrono` is not covered by this exception and fails CI.
   - **Removal:** after the migration to a maintained date-time crate (`jiff` or `time`).
+  - **Tracking issue:** [#3](https://github.com/Memquira/memquira/issues/3).
 
 ## Not provided
 
