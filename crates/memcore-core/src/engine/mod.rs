@@ -37,8 +37,8 @@ use crate::consolidation::{
 };
 use crate::context_cache_metrics_recorder;
 use crate::dedup::{
-    DeduplicationDecision, EmbeddingDeduplicationConfig, detect_duplicate,
-    detect_embedding_duplicate, find_existing_facts_for_dedup, vector_hit_rejection,
+    DedupValueGuard, DeduplicationDecision, EmbeddingDeduplicationConfig, detect_duplicate_guarded,
+    detect_embedding_duplicate_guarded, find_existing_facts_for_dedup, vector_hit_rejection,
 };
 use crate::export::{
     EXPORT_EPISODES_LIMIT, EXPORT_EVENTS_LIMIT, EXPORT_FACTS_LIMIT, UserMemoryExport,
@@ -52,9 +52,9 @@ use crate::importance::{ImportancePolicy, ImportanceScorer};
 use crate::lifecycle::{
     LifecycleApplyResult, LifecycleContext, RelatedDecision, RelatedFactMatcher,
     apply_fact_operation_with_id, apply_invalidate, apply_update_with_content,
-    checked_embedding_from, find_related_facts, find_related_facts_semantic,
-    find_related_facts_semantic_v23, guard_related_decision, guard_related_decision_v23,
-    link_superseded_by, vector_record_from_fact,
+    checked_embedding_from, find_related_facts, find_related_facts_semantic_v23_with_floor,
+    find_related_facts_semantic_with_floor, guard_related_decision,
+    guard_related_decision_v23_with_policy, link_superseded_by, vector_record_from_fact,
 };
 use crate::pagination::{PageCursor, build_page, parse_optional_cursor};
 use crate::ports::{
@@ -140,7 +140,17 @@ pub struct MemoryEngine {
     /// The legacy path's related-fact lookup and how its
     /// classifier decisions apply. `Legacy` (the default) is the previous behaviour.
     related_fact_matcher: RelatedFactMatcher,
+    /// (`MEMCORE_RELATED_FACT_SIMILARITY_FLOOR`): the semantic matchers' floor.
+    /// The default is the consolidation default (0.5), the value every earlier measurement used.
+    related_fact_similarity_floor: f32,
+    /// (`MEMCORE_EVENT_UPDATE_POLICY`): event targets under the semantic_v23
+    /// guard. `History` (the default) is the previous rule.
+    event_update_policy: crate::lifecycle::EventUpdatePolicy,
     embedding_dedup_config: EmbeddingDeduplicationConfig,
+    /// (`MEMCORE_DEDUP_VALUE_GUARD`): whether the token-overlap and embedding
+    /// near-duplicate rules of the legacy path also compare values. `Off` (the default) is the
+    /// previous behaviour.
+    dedup_value_guard: DedupValueGuard,
     ranking_config: RankingConfig,
     rrf_config: RrfConfig,
     default_retrieval_mode: RetrievalMode,
@@ -233,9 +243,13 @@ impl MemoryEngine {
             enable_pii_redaction: false,
             classification_skip_when_no_related: false,
             related_fact_matcher: RelatedFactMatcher::Legacy,
+            related_fact_similarity_floor:
+                crate::consolidation::DEFAULT_CONSOLIDATION_SIMILARITY_FLOOR,
+            event_update_policy: crate::lifecycle::EventUpdatePolicy::History,
             temporal_rewrite: TemporalRewrite::Legacy,
             importance_policy: ImportancePolicy::Legacy,
             embedding_dedup_config: EmbeddingDeduplicationConfig::default(),
+            dedup_value_guard: DedupValueGuard::Off,
             ranking_config: RankingConfig::default(),
             rrf_config: RrfConfig::default(),
             default_retrieval_mode: RetrievalMode::default(),
@@ -467,6 +481,16 @@ impl MemoryEngine {
         self
     }
 
+    pub fn with_related_fact_similarity_floor(mut self, floor: f32) -> Self {
+        self.related_fact_similarity_floor = floor;
+        self
+    }
+
+    pub fn with_event_update_policy(mut self, policy: crate::lifecycle::EventUpdatePolicy) -> Self {
+        self.event_update_policy = policy;
+        self
+    }
+
     pub fn with_temporal_rewrite(mut self, rewrite: TemporalRewrite) -> Self {
         self.temporal_rewrite = rewrite;
         self
@@ -480,6 +504,16 @@ impl MemoryEngine {
     pub fn with_embedding_dedup_config(mut self, config: EmbeddingDeduplicationConfig) -> Self {
         self.embedding_dedup_config = config;
         self
+    }
+
+    /// (`MEMCORE_DEDUP_VALUE_GUARD`).
+    pub fn with_dedup_value_guard(mut self, guard: DedupValueGuard) -> Self {
+        self.dedup_value_guard = guard;
+        self
+    }
+
+    pub fn dedup_value_guard(&self) -> DedupValueGuard {
+        self.dedup_value_guard
     }
 
     pub fn with_ranking_config(mut self, config: RankingConfig) -> Self {
@@ -626,12 +660,16 @@ impl MemoryEngine {
 
         record_stage("ingest", "extract", extract_started);
 
-        if extraction.skipped.total() > 0 || extraction.event_time_unparsed > 0 {
+        if extraction.skipped.total() > 0
+            || extraction.event_time_unparsed > 0
+            || extraction.memory_type_fallback > 0
+        {
             tracing::warn!(
                 event = "add_memory_extraction_losses",
                 returned_by_model = extraction.returned_by_model(),
                 usable = extraction.candidates.len(),
                 unknown_memory_type = extraction.skipped.unknown_memory_type,
+                memory_type_fallback = extraction.memory_type_fallback,
                 invalid_candidate = extraction.skipped.invalid_candidate,
                 event_time_unparsed = extraction.event_time_unparsed,
                 "the model returned facts that extraction could not fully use"
@@ -715,7 +753,7 @@ impl MemoryEngine {
             if let DeduplicationDecision::Duplicate {
                 existing_fact_id,
                 reason,
-            } = detect_duplicate(&candidate, &existing_for_dedup)
+            } = detect_duplicate_guarded(&candidate, &existing_for_dedup, self.dedup_value_guard)
             {
                 if let Some(other) = journal.foreign_in_flight(existing_fact_id).await? {
                     journal.await_in_flight(other, &mut waits).await?;
@@ -752,13 +790,14 @@ impl MemoryEngine {
             if let Some(DeduplicationDecision::Duplicate {
                 existing_fact_id,
                 reason,
-            }) = detect_embedding_duplicate(
+            }) = detect_embedding_duplicate_guarded(
                 self.fact_store.as_ref(),
                 self.vector_store.as_ref(),
                 &input.tenant,
                 candidate.memory_type,
                 &candidate_embedding,
                 &self.embedding_dedup_config,
+                self.dedup_value_guard.is_on().then_some(&candidate),
             )
             .await?
             {
@@ -787,22 +826,24 @@ impl MemoryEngine {
                     find_related_facts(self.fact_store.as_ref(), &input.tenant, &candidate).await?
                 }
                 RelatedFactMatcher::Semantic => {
-                    find_related_facts_semantic(
+                    find_related_facts_semantic_with_floor(
                         self.fact_store.as_ref(),
                         self.vector_store.as_ref(),
                         &input.tenant,
                         &candidate,
                         &candidate_embedding,
+                        self.related_fact_similarity_floor,
                     )
                     .await?
                 }
                 RelatedFactMatcher::SemanticV23 => {
-                    find_related_facts_semantic_v23(
+                    find_related_facts_semantic_v23_with_floor(
                         self.fact_store.as_ref(),
                         self.vector_store.as_ref(),
                         &input.tenant,
                         &candidate,
                         &candidate_embedding,
+                        self.related_fact_similarity_floor,
                     )
                     .await?
                 }
@@ -865,7 +906,12 @@ impl MemoryEngine {
                 Some(offered) => match if self.related_fact_matcher
                     == RelatedFactMatcher::SemanticV23
                 {
-                    guard_related_decision_v23(&decision, &offered, &candidate)
+                    guard_related_decision_v23_with_policy(
+                        &decision,
+                        &offered,
+                        &candidate,
+                        self.event_update_policy,
+                    )
                 } else {
                     guard_related_decision(&decision, &offered, &candidate)
                 } {
@@ -883,13 +929,13 @@ impl MemoryEngine {
                             journal.await_in_flight(other, &mut waits).await?;
                             continue 'attempt;
                         }
-                        if let Some(other) = self
+                        match self
                             .supersede_with_candidate(
                                 &input,
                                 &candidate,
                                 &lifecycle_ctx,
                                 &mut journal,
-                                candidate_embedding,
+                                candidate_embedding.clone(),
                                 target,
                                 &decision,
                                 &mut summary,
@@ -897,10 +943,29 @@ impl MemoryEngine {
                             )
                             .await?
                         {
-                            journal.await_in_flight(other, &mut waits).await?;
-                            continue 'attempt;
+                            SupersedeOutcome::Done => continue 'candidates,
+                            SupersedeOutcome::Wait(other) => {
+                                journal.await_in_flight(other, &mut waits).await?;
+                                continue 'attempt;
+                            }
+                            // The offered target is no longer active (superseded,
+                            // invalidated or deleted since the lookup). Nothing was written; the
+                            // candidate is stored as an Add and the stale target stays untouched.
+                            SupersedeOutcome::TargetInactive => {
+                                crate::observability::record_related_decision_downgraded(
+                                    "stale_target",
+                                );
+                                FactOperationDecision {
+                                    operation: FactOperation::Add,
+                                    target_fact_id: None,
+                                    reason: Some(format!(
+                                        "{:?} not applied: stale_target",
+                                        decision.operation
+                                    )),
+                                    confidence: decision.confidence,
+                                }
+                            }
                         }
-                        continue 'candidates;
                     }
                 },
             };
@@ -1377,8 +1442,21 @@ impl MemoryEngine {
         decision: &FactOperationDecision,
         summary: &mut MemoryOperationSummary,
         memories: &mut Vec<Fact>,
-    ) -> MemcoreResult<Option<Uuid>> {
+    ) -> MemcoreResult<SupersedeOutcome> {
         use serde_json::json;
+
+        // An offered target can stop being active between the lookup and this point
+        // (another request superseded it and committed, or the user deleted it). Superseding it
+        // again would overwrite its `superseded_at` / `superseded_by` history link; nothing is
+        // written and the caller stores the candidate as an Add.
+        let target_active = ctx
+            .fact_store
+            .get_fact(&input.tenant, target)
+            .await?
+            .is_some_and(|fact| fact.is_active());
+        if !target_active {
+            return Ok(SupersedeOutcome::TargetInactive);
+        }
 
         let add = FactOperationDecision {
             operation: FactOperation::Add,
@@ -1413,13 +1491,13 @@ impl MemoryEngine {
                 // The equivalent fact may be another request's uncommitted add; the
                 // caller waits for it and processes the candidate again.
                 if let Some(other) = journal.foreign_in_flight(existing_fact_id).await? {
-                    return Ok(Some(other));
+                    return Ok(SupersedeOutcome::Wait(other));
                 }
                 self.record_concurrent_duplicate(&input.tenant, existing_fact_id, summary)
                     .await;
-                return Ok(None);
+                return Ok(SupersedeOutcome::Done);
             }
-            _ => return Ok(None),
+            _ => return Ok(SupersedeOutcome::Done),
         };
         summary.added += 1;
         let audit = json!({
@@ -1442,6 +1520,18 @@ impl MemoryEngine {
         .await;
         let replacement = fact.id;
         memories.push(fact);
+        // Re-check after the add (the add's provider-free write is the only work
+        // between the two reads). A target that became inactive meanwhile keeps its own history;
+        // the replacement stays as an ordinary added fact.
+        let still_active = ctx
+            .fact_store
+            .get_fact(&input.tenant, target)
+            .await?
+            .is_some_and(|fact| fact.is_active());
+        if !still_active {
+            crate::observability::record_related_decision_downgraded("stale_target_after_add");
+            return Ok(SupersedeOutcome::Done);
+        }
         let (before, _after) =
             apply_invalidate(ctx, &input.tenant, target, None, Utc::now()).await?;
         summary.invalidated += 1;
@@ -1460,7 +1550,7 @@ impl MemoryEngine {
             ),
         )
         .await;
-        Ok(None)
+        Ok(SupersedeOutcome::Done)
     }
 
     /// Stores `candidate` as a new fact for consolidation v2 and records the add event. Returns the
@@ -3315,6 +3405,16 @@ impl MemoryEngine {
             )
         })
     }
+}
+
+/// What `MemoryEngine::supersede_with_candidate` did.
+enum SupersedeOutcome {
+    /// The candidate was stored (and the target superseded, or a duplicate recorded).
+    Done,
+    /// Another request's uncommitted fact is involved: wait for it, then process the candidate again.
+    Wait(Uuid),
+    /// The target is no longer active; nothing was written.
+    TargetInactive,
 }
 
 fn messages_for_llm_extraction(

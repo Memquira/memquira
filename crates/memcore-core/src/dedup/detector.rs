@@ -3,6 +3,9 @@ use memcore_common::MemcoreResult;
 use crate::ports::{FactSearchQuery, FactStore};
 use crate::{CandidateFact, Fact, TenantContext};
 
+use super::value_guard::{DedupValueGuard, ValueConflict, value_compatibility};
+use crate::observability::record_dedup_value_guard;
+
 use super::types::{
     DEDUP_SEARCH_LIMIT, DeduplicationDecision, EXACT_DUPLICATE_THRESHOLD,
     HIGH_SIMILARITY_DUPLICATE_THRESHOLD, MODERATE_SIMILARITY_THRESHOLD,
@@ -127,6 +130,20 @@ pub fn detect_duplicate(
     candidate: &CandidateFact,
     existing_facts: &[Fact],
 ) -> DeduplicationDecision {
+    detect_duplicate_guarded(candidate, existing_facts, DedupValueGuard::Off)
+}
+
+/// [`detect_duplicate`] with the value guard (`MEMCORE_DEDUP_VALUE_GUARD`).
+///
+/// With the guard on, the high token-overlap rule counts a fact as a duplicate only when the
+/// candidate is value-compatible with it ([`value_compatibility`]); an incompatible fact is at most
+/// "similar but distinct". The exact normalised-content rule is never guarded, so identical retries
+/// and replays stay NOOPs. Off: identical to the legacy rule.
+pub fn detect_duplicate_guarded(
+    candidate: &CandidateFact,
+    existing_facts: &[Fact],
+    guard: DedupValueGuard,
+) -> DeduplicationDecision {
     let normalized_candidate = normalize_content(&candidate.content);
     let mut best_moderate: Option<(f32, String)> = None;
 
@@ -145,10 +162,29 @@ pub fn detect_duplicate(
 
         let overlap = token_overlap_ratio(&candidate.content, &existing.content);
         if overlap >= HIGH_SIMILARITY_DUPLICATE_THRESHOLD {
-            return DeduplicationDecision::Duplicate {
-                existing_fact_id: existing.id,
-                reason: format!("high token overlap ({overlap:.2})"),
+            // With the guard on, a value-incompatible near-duplicate is only "similar but distinct" (below).
+            let conflict = if guard.is_on() {
+                let conflict = value_compatibility(
+                    &candidate.content,
+                    candidate.structure.event_time.as_ref(),
+                    &existing.content,
+                    existing.structure.event_time.as_ref(),
+                )
+                .err();
+                record_dedup_value_guard(
+                    "content",
+                    conflict.map_or("duplicate", ValueConflict::as_str),
+                );
+                conflict
+            } else {
+                None
             };
+            if conflict.is_none() {
+                return DeduplicationDecision::Duplicate {
+                    existing_fact_id: existing.id,
+                    reason: format!("high token overlap ({overlap:.2})"),
+                };
+            }
         }
 
         if overlap >= MODERATE_SIMILARITY_THRESHOLD {

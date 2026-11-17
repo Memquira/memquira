@@ -5,7 +5,7 @@ use memcore_common::{MemcoreError, MemcoreResult};
 use memcore_core::temporal::parse_model_timestamp_value;
 use memcore_core::{
     CandidateFact, CandidateSkipReason, FactExtractionOutput, FactOperation, FactOperationDecision,
-    MemoryType,
+    MemoryType, UnknownMemoryTypePolicy,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -290,6 +290,14 @@ pub fn classification_json_schema() -> Value {
 /// counted by reason and logged at `WARN`, and the counts travel back to the caller in
 /// `FactExtractionOutput` so they can reach the metrics endpoint.
 pub fn parse_fact_extraction_response(text: &str) -> MemcoreResult<FactExtractionOutput> {
+    parse_fact_extraction_response_with_policy(text, UnknownMemoryTypePolicy::Skip)
+}
+
+/// [`parse_fact_extraction_response`] with an explicit policy for out-of-vocabulary memory types.
+pub fn parse_fact_extraction_response_with_policy(
+    text: &str,
+    unknown_memory_type: UnknownMemoryTypePolicy,
+) -> MemcoreResult<FactExtractionOutput> {
     let parsed: FactExtractionModelResponse = serde_json::from_str(text).map_err(|err| {
         MemcoreError::ProviderError(format!("invalid fact extraction JSON from model: {err}"))
     })?;
@@ -301,6 +309,15 @@ pub fn parse_fact_extraction_response(text: &str) -> MemcoreResult<FactExtractio
             // The parse error is deliberately discarded: it only restates the same raw label,
             // which is untrusted model output and is logged below bounded and stripped of
             // control characters instead.
+            Err(_) if unknown_memory_type == UnknownMemoryTypePolicy::Other => {
+                tracing::warn!(
+                    event = "fact_memory_type_fallback",
+                    memory_type = %sanitize_for_log(&fact.memory_type),
+                    "keeping an extracted fact whose memory type is not in the vocabulary as other"
+                );
+                output.memory_type_fallback += 1;
+                MemoryType::Other
+            }
             Err(_) => {
                 tracing::warn!(
                     event = "fact_candidate_skipped",
@@ -527,6 +544,24 @@ mod tests {
         assert_eq!(kept.target_fact_id, Some(id));
     }
     use memcore_core::MemoryType;
+
+    /// The legacy (unstructured) parser honours the same policy.
+    #[test]
+    fn the_other_policy_keeps_unknown_types_in_the_legacy_parser() {
+        let json = r#"{"facts":[
+            {"content":"User does bouldering.","memory_type":"Activity","confidence":0.9,"importance":0.8,"valid_at":null,"metadata":{}},
+            {"content":"User is learning Rust.","memory_type":"Skill","confidence":0.9,"importance":0.8,"valid_at":null,"metadata":{}}
+        ]}"#;
+        let kept = parse_fact_extraction_response_with_policy(json, UnknownMemoryTypePolicy::Other)
+            .unwrap();
+        assert_eq!(kept.candidates.len(), 2);
+        assert_eq!(kept.candidates[0].memory_type, MemoryType::Other);
+        assert_eq!(kept.memory_type_fallback, 1);
+        let default = parse_fact_extraction_response(json).unwrap();
+        assert_eq!(default.candidates.len(), 1);
+        assert_eq!(default.skipped.unknown_memory_type, 1);
+        assert_eq!(default.memory_type_fallback, 0);
+    }
 
     #[test]
     fn parses_fact_extraction_json() {

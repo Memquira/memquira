@@ -331,6 +331,21 @@ pub struct FactExtractionOutput {
     /// dropped from the fact's provenance, never stored.
     #[serde(default)]
     pub invalid_source_message_ids: usize,
+    /// Facts kept with memory type `other` because the model's type was outside the vocabulary
+    /// (`UnknownMemoryTypePolicy::Other`). Not skips: they are in `candidates`.
+    #[serde(default)]
+    pub memory_type_fallback: usize,
+}
+
+/// What extraction does with a fact whose memory type is outside the vocabulary
+/// (`MEMCORE_UNKNOWN_MEMORY_TYPE`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum UnknownMemoryTypePolicy {
+    /// Discard the fact and count it as `unknown_memory_type`. Default.
+    #[default]
+    Skip,
+    /// Keep the fact with memory type `other` and count it in `memory_type_fallback`.
+    Other,
 }
 
 impl FactExtractionOutput {
@@ -341,6 +356,7 @@ impl FactExtractionOutput {
             skipped: CandidateSkipCounts::default(),
             event_time_unparsed: 0,
             invalid_source_message_ids: 0,
+            memory_type_fallback: 0,
         }
     }
 

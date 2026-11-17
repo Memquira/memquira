@@ -41,7 +41,7 @@ pub use provider::{
     EntityMention, ExtractionMode, FactAnnotation, FactClassificationInput, FactExtractionInput,
     FactExtractionOutput, JsonRepair, LlmProvider, MemoryMessage, MessageRole,
     QueryDecompositionInput, RelationMention, SummarizationInput, UNUSABLE_ANNOTATION_OUTPUT,
-    unusable_annotation_class, unusable_annotation_output,
+    UnknownMemoryTypePolicy, unusable_annotation_class, unusable_annotation_output,
 };
 pub use provider_usage::{
     DEFAULT_PROVIDER_USAGE_LIMIT, MAX_PROVIDER_USAGE_LIMIT, ProviderCallStatus,

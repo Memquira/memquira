@@ -3,9 +3,11 @@ mod executor;
 mod types;
 
 pub use detector::{
-    RelatedDecision, RelatedFactMatcher, canonical_subject, find_related_facts,
-    find_related_facts_semantic, find_related_facts_semantic_v23, guard_related_decision,
-    guard_related_decision_v23,
+    EventUpdatePolicy, RelatedDecision, RelatedFactMatcher, canonical_subject, find_related_facts,
+    find_related_facts_semantic, find_related_facts_semantic_v23,
+    find_related_facts_semantic_v23_with_floor, find_related_facts_semantic_with_floor,
+    guard_related_decision, guard_related_decision_v23, guard_related_decision_v23_with_policy,
+    states_a_change,
 };
 pub use executor::{
     LifecycleApplyResult, LifecycleContext, apply_fact_operation, apply_fact_operation_with_id,

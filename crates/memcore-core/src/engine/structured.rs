@@ -336,6 +336,13 @@ fn is_value_position(sentence: &str, start: usize, expression: &str) -> bool {
     {
         return true;
     }
+    // One article between the preposition and the date ("is on the 16th of June").
+    if before
+        .last()
+        .is_some_and(|word| matches!(*word, "the" | "a" | "an"))
+    {
+        before.pop();
+    }
     if before
         .last()
         .is_some_and(|word| matches!(*word, "on" | "in" | "at"))
@@ -345,6 +352,109 @@ fn is_value_position(sentence: &str, start: usize, expression: &str) -> bool {
     before
         .last()
         .is_some_and(|word| VALUE_MARKERS.contains(word))
+}
+
+const MONTHS: [&str; 12] = [
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
+];
+
+const ORDINAL_WORDS: [&str; 31] = [
+    "first",
+    "second",
+    "third",
+    "fourth",
+    "fifth",
+    "sixth",
+    "seventh",
+    "eighth",
+    "ninth",
+    "tenth",
+    "eleventh",
+    "twelfth",
+    "thirteenth",
+    "fourteenth",
+    "fifteenth",
+    "sixteenth",
+    "seventeenth",
+    "eighteenth",
+    "nineteenth",
+    "twentieth",
+    "twenty-first",
+    "twenty-second",
+    "twenty-third",
+    "twenty-fourth",
+    "twenty-fifth",
+    "twenty-sixth",
+    "twenty-seventh",
+    "twenty-eighth",
+    "twenty-ninth",
+    "thirtieth",
+    "thirty-first",
+];
+
+/// An unchecked expression made only of calendar words ("January", "the first of
+/// November", "16 June 2024") whose month, and day and year when it names them, are exactly the
+/// settled time's: the date prefix states everything it says, so it can be removed without losing
+/// anything. Any other word ("the end of August", "the week after Easter") keeps the expression.
+fn restated_by_prefix(expression: &str, event_time: &crate::TemporalValue) -> bool {
+    use chrono::Datelike;
+    let start = event_time.start;
+    let mut month = None;
+    let mut day = None;
+    let mut year = None;
+    for raw in expression
+        .split(|c: char| !c.is_alphanumeric() && c != '-')
+        .filter(|word| !word.is_empty())
+    {
+        let word = raw.to_lowercase();
+        if matches!(word.as_str(), "the" | "of" | "on" | "in" | "at") {
+            continue;
+        }
+        if let Some(index) = MONTHS.iter().position(|m| *m == word) {
+            month = Some(index as u32 + 1);
+            continue;
+        }
+        if let Some(index) = ORDINAL_WORDS.iter().position(|o| *o == word) {
+            day = Some(index as u32 + 1);
+            continue;
+        }
+        let digits: String = word.chars().take_while(char::is_ascii_digit).collect();
+        let suffix = &word[digits.len()..];
+        if !digits.is_empty() && matches!(suffix, "" | "st" | "nd" | "rd" | "th") {
+            let value: u32 = match digits.parse() {
+                Ok(value) => value,
+                Err(_) => return false,
+            };
+            if digits.len() == 4 && suffix.is_empty() {
+                year = Some(value as i32);
+                continue;
+            }
+            if (1..=31).contains(&value) {
+                day = Some(value);
+                continue;
+            }
+        }
+        return false;
+    }
+    let Some(month) = month else {
+        return false;
+    };
+    month == start.month()
+        && day.is_none_or(|day| {
+            day == start.day() && event_time.granularity == crate::TemporalGranularity::Day
+        })
+        && year.is_none_or(|year| year == start.year())
 }
 
 /// The settled time as it reads inside a sentence: "13 May 2023", "the week of 1 June 2026",
@@ -395,11 +505,13 @@ fn preserving_sentence(
                 format!("{}{}", event_time_prefix(event_time), sentence)
             }
         }
-        Some((expression, _)) if resolver_backed => format!(
-            "{}{}",
-            event_time_prefix(event_time),
-            remove_time_expression(sentence, expression)
-        ),
+        Some((expression, _)) if resolver_backed || restated_by_prefix(expression, event_time) => {
+            format!(
+                "{}{}",
+                event_time_prefix(event_time),
+                remove_time_expression(sentence, expression)
+            )
+        }
         // The resolver could not check the expression, or it is not in the sentence: the date is
         // stated in front and nothing is removed.
         _ => format!("{}{}", event_time_prefix(event_time), sentence),
@@ -956,6 +1068,70 @@ mod tests {
         assert_eq!(
             kept.content,
             "Between 10 April 2023 and 16 April 2023, Tomas visited the museum the week after Easter."
+        );
+    }
+
+    /// An unchecked calendar expression that the settled prefix restates exactly is
+    /// removed (as legacy does) instead of being stated twice; one with other words keeps the
+    /// sentence whole; a date after "is on the" is the sentence's value and stays in place.
+    #[test]
+    fn a_restated_calendar_expression_is_removed_once() {
+        use crate::TemporalGranularity::{Day, Month};
+        for (content, model, expression, expected) in [
+            (
+                "Bruno stopped smoking in January.",
+                ("2024-01-01", "2024-01-31", Month),
+                "January",
+                "In January 2024, Bruno stopped smoking.",
+            ),
+            (
+                "Amara moved from Leeds to Edinburgh on the first of November.",
+                ("2023-11-01", "2023-11-01", Day),
+                "the first of November",
+                "On 1 November 2023, Amara moved from Leeds to Edinburgh.",
+            ),
+            (
+                // other words: kept whole, the date stated in front (unchanged behaviour)
+                "Anders left the logistics firm at the end of August.",
+                ("2024-08-31", "2024-08-31", Day),
+                "at the end of August",
+                "On 31 August 2024, Anders left the logistics firm at the end of August.",
+            ),
+            (
+                // the month the model settled differs from the words: nothing is removed
+                "Dario quit the bakery in May.",
+                ("2024-06-01", "2024-06-30", Month),
+                "May",
+                "In June 2024, Dario quit the bakery in May.",
+            ),
+            (
+                // a day the expression names must be the settled day at day granularity
+                "Yusuf won the cup on the 3rd of October.",
+                ("2022-10-01", "2022-10-31", Month),
+                "the 3rd of October",
+                "In October 2022, Yusuf won the cup on the 3rd of October.",
+            ),
+        ] {
+            let (finished, _) = finish_dated(
+                TemporalRewrite::Preserving,
+                content,
+                content,
+                Some(model),
+                expression,
+            );
+            assert_eq!(finished.content, expected, "{content}");
+        }
+        let birthday = "Wilma's birthday is on the 16th of June.";
+        let (kept, _) = finish_dated(
+            TemporalRewrite::Preserving,
+            birthday,
+            birthday,
+            Some(("2025-06-16", "2025-06-16", Day)),
+            "16th of June",
+        );
+        assert_eq!(
+            kept.content, birthday,
+            "a value after an article stays in place"
         );
     }
 

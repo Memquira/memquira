@@ -797,6 +797,38 @@ fn importance_policy(settings: &Settings) -> memcore_core::ImportancePolicy {
     }
 }
 
+/// (`MEMCORE_UNKNOWN_MEMORY_TYPE`, default `skip`).
+fn unknown_memory_type(settings: &Settings) -> memcore_core::UnknownMemoryTypePolicy {
+    match settings.unknown_memory_type {
+        memcore_config::UnknownMemoryTypeSetting::Skip => {
+            memcore_core::UnknownMemoryTypePolicy::Skip
+        }
+        memcore_config::UnknownMemoryTypeSetting::Other => {
+            memcore_core::UnknownMemoryTypePolicy::Other
+        }
+    }
+}
+
+/// (`MEMCORE_DEDUP_VALUE_GUARD`, default `off`).
+fn dedup_value_guard(settings: &Settings) -> memcore_core::DedupValueGuard {
+    match settings.dedup_value_guard {
+        memcore_config::DedupValueGuardSetting::Off => memcore_core::DedupValueGuard::Off,
+        memcore_config::DedupValueGuardSetting::On => memcore_core::DedupValueGuard::On,
+    }
+}
+
+/// (`MEMCORE_EVENT_UPDATE_POLICY`, default `history`).
+fn event_update_policy(settings: &Settings) -> memcore_core::EventUpdatePolicy {
+    match settings.event_update_policy {
+        memcore_config::EventUpdatePolicySetting::History => {
+            memcore_core::EventUpdatePolicy::History
+        }
+        memcore_config::EventUpdatePolicySetting::ChangeMarker => {
+            memcore_core::EventUpdatePolicy::ChangeMarker
+        }
+    }
+}
+
 /// (`MEMCORE_CLASSIFICATION_PROMPT`, default `legacy`).
 fn classification_prompt(settings: &Settings) -> memcore_providers::ClassificationPrompt {
     match settings.classification_prompt {
@@ -857,7 +889,8 @@ fn build_llm_provider_by_name(
                     })
                     .with_output_token_limits(output_token_limits(settings))
                     .with_structured_extraction_policy(structured_extraction_policy(settings))
-                    .with_classification_prompt(classification_prompt(settings)),
+                    .with_classification_prompt(classification_prompt(settings))
+                    .with_unknown_memory_type(unknown_memory_type(settings)),
             ))
         }
         "openrouter" => Err(MemcoreError::ValidationError(
@@ -1542,6 +1575,9 @@ pub async fn create_memory_engine(
             .with_pii_redaction(settings.enable_pii_redaction)
             .with_classification_skip_when_no_related(settings.classification_skip_when_no_related)
             .with_related_fact_matcher(related_fact_matcher(settings))
+            .with_related_fact_similarity_floor(settings.related_fact_similarity_floor)
+            .with_event_update_policy(event_update_policy(settings))
+            .with_dedup_value_guard(dedup_value_guard(settings))
             .with_temporal_rewrite(temporal_rewrite(settings))
             .with_importance_policy(importance_policy(settings))
             .with_episodes(episodes)
@@ -2333,6 +2369,9 @@ pub fn create_mock_memory_engine_with_wiring_and_org_plan_store(
         }))
         .with_classification_skip_when_no_related(settings.classification_skip_when_no_related)
         .with_related_fact_matcher(related_fact_matcher(settings))
+        .with_related_fact_similarity_floor(settings.related_fact_similarity_floor)
+        .with_event_update_policy(event_update_policy(settings))
+        .with_dedup_value_guard(dedup_value_guard(settings))
         .with_temporal_rewrite(temporal_rewrite(settings))
         .with_importance_policy(importance_policy(settings))
         .with_episodes(settings.episodes_enabled.then(|| EpisodeComponents {
