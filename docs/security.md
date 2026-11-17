@@ -89,6 +89,15 @@ An exception records a risk the project accepts; it is not a fix. Each exception
     production.
   - **Removal:** when the project moves to an sqlx release that uses `libsqlite3-sys` 0.39 or later, or sooner if a
     feature starts opening SQLite files that a less-trusted party could supply.
+- **RUSTSEC-2026-0543**: `chrono` is unmaintained (all versions).
+  - **Status: accepted risk.** This is a maintenance notice, not a known vulnerability, and no maintained
+    `chrono` release exists to upgrade to. The exception is in `deny.toml` only; `cargo audit` keeps reporting it as
+    a warning.
+  - **Why it is accepted for now:** four workspace crates and sqlx's date-time support use `chrono` directly.
+    Replacing it is a migration across the codebase, not a dependency update.
+  - **Residual exposure:** fixes for any future `chrono` defect may not be released. A future vulnerability
+    advisory against `chrono` is not covered by this exception and fails CI.
+  - **Removal:** after the migration to a maintained date-time crate (`jiff` or `time`).
 
 ## Not provided
 
