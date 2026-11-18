@@ -122,8 +122,11 @@ Content-Type: application/json
 `user_id` is your application's identifier for the end user; Memquira trusts the calling application for it, so
 call the API from your backend, never from a browser. Endpoints, parameters and errors:
 [docs/api-reference.md](docs/api-reference.md). The server also serves `GET /openapi.json` and Swagger UI at
-`GET /docs`; the committed spec is [openapi/memcore.openapi.json](openapi/memcore.openapi.json). Minimal clients
-in Python, Node.js and curl are in [examples/](examples/).
+`GET /docs`; the committed spec is [openapi/memcore.openapi.json](openapi/memcore.openapi.json).
+
+For Python there is a typed client with sync and async versions and safe retries, in
+[clients/python](clients/python/) (`pip install ./clients/python`; not on PyPI yet). Minimal example clients in
+Node.js and curl are in [examples/](examples/).
 
 ## Configuration
 
@@ -162,6 +165,7 @@ TLS-terminating reverse proxy in front of it. Deployment, backups, upgrades and 
 | [Architecture](docs/architecture.md) | Components, write and read paths, storage, tenancy |
 | [Configuration](docs/configuration.md) | Environment variables and defaults |
 | [API reference](docs/api-reference.md) | Endpoints, authentication, examples, errors |
+| [Python client](clients/python/README.md) | Typed sync and async client, retries, use in agents |
 | [Providers](docs/providers.md) | OpenAI, compatible servers, local models, quality tiers |
 | [Deployment](docs/deployment.md) | Production Compose stack, keys, reverse proxy, sizing |
 | [Operations](docs/operations.md) | Backups, export and import, migrations, maintenance, metrics |
