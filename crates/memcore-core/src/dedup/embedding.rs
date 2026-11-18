@@ -1,8 +1,10 @@
 use memcore_common::MemcoreResult;
 
-use crate::observability::record_vector_hit_rejected;
+use crate::observability::{record_dedup_value_guard, record_vector_hit_rejected};
 use crate::ports::{FactStore, VectorSearchQuery, VectorSearchResult, VectorStore};
-use crate::{Fact, MemoryType, TenantContext};
+use crate::{CandidateFact, Fact, MemoryType, TenantContext};
+
+use super::value_guard::{ValueConflict, value_compatibility};
 
 use super::types::{DeduplicationDecision, EmbeddingDeduplicationConfig};
 
@@ -44,6 +46,32 @@ pub async fn detect_embedding_duplicate(
     embedding: &[f32],
     config: &EmbeddingDeduplicationConfig,
 ) -> MemcoreResult<Option<DeduplicationDecision>> {
+    detect_embedding_duplicate_guarded(
+        fact_store,
+        vector_store,
+        tenant,
+        memory_type,
+        embedding,
+        config,
+        None,
+    )
+    .await
+}
+
+/// [`detect_embedding_duplicate`] with the value guard
+/// (`MEMCORE_DEDUP_VALUE_GUARD=on`): `guarded` is the candidate whose values are compared. A hit at
+/// or above the threshold that is not value-compatible with the candidate
+/// ([`super::value_compatibility`]) is skipped like an unconfirmed hit, and the next hit is
+/// examined; with no compatible hit the candidate is not a duplicate. `None`: the legacy rule.
+pub async fn detect_embedding_duplicate_guarded(
+    fact_store: &dyn FactStore,
+    vector_store: &dyn VectorStore,
+    tenant: &TenantContext,
+    memory_type: MemoryType,
+    embedding: &[f32],
+    config: &EmbeddingDeduplicationConfig,
+    guarded: Option<&CandidateFact>,
+) -> MemcoreResult<Option<DeduplicationDecision>> {
     if !config.enabled {
         return Ok(None);
     }
@@ -66,6 +94,22 @@ pub async fn detect_embedding_duplicate(
         if let Some(reason) = vector_hit_rejection(&result, fact.as_ref(), tenant) {
             record_vector_hit_rejected("dedup", reason);
             continue;
+        }
+        if let (Some(candidate), Some(existing)) = (guarded, fact.as_ref()) {
+            let conflict = value_compatibility(
+                &candidate.content,
+                candidate.structure.event_time.as_ref(),
+                &existing.content,
+                existing.structure.event_time.as_ref(),
+            )
+            .err();
+            record_dedup_value_guard(
+                "embedding",
+                conflict.map_or("duplicate", ValueConflict::as_str),
+            );
+            if conflict.is_some() {
+                continue;
+            }
         }
         return Ok(Some(DeduplicationDecision::Duplicate {
             existing_fact_id: result.fact_id,

@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use memcore_common::{MemcoreError, MemcoreResult};
 use memcore_core::{ExtractionMode, FactExtractionOutput, FactOperationDecision};
 
-use crate::structured::{StructuredWindow, parse_structured_fact_extraction_response};
+use crate::structured::{StructuredWindow, parse_structured_fact_extraction_response_with_policy};
 use serde_json::json;
 
 use crate::inputs::{
@@ -14,7 +14,7 @@ use super::client::OpenAiClient;
 use super::types::{
     ChatCompletionMessage, ChatCompletionsRequest, classification_json_schema,
     extract_chat_completion_text, extract_output_text, parse_classification_response,
-    parse_fact_extraction_response,
+    parse_fact_extraction_response_with_policy,
 };
 
 const CLASSIFICATION_INSTRUCTIONS: &str = r#"You classify how a candidate memory fact should be stored relative to existing facts.
@@ -137,6 +137,7 @@ pub struct OpenAiLlmProvider {
     extraction_policy: crate::prompts::StructuredExtractionPolicy,
     json_mode: ChatJsonMode,
     classification_prompt: ClassificationPrompt,
+    unknown_memory_type: memcore_core::UnknownMemoryTypePolicy,
 }
 
 impl OpenAiLlmProvider {
@@ -150,6 +151,7 @@ impl OpenAiLlmProvider {
             extraction_policy: crate::prompts::StructuredExtractionPolicy::default(),
             json_mode: ChatJsonMode::default(),
             classification_prompt: ClassificationPrompt::default(),
+            unknown_memory_type: memcore_core::UnknownMemoryTypePolicy::Skip,
         }
     }
 
@@ -168,6 +170,7 @@ impl OpenAiLlmProvider {
             extraction_policy: crate::prompts::StructuredExtractionPolicy::default(),
             json_mode: ChatJsonMode::default(),
             classification_prompt: ClassificationPrompt::default(),
+            unknown_memory_type: memcore_core::UnknownMemoryTypePolicy::Skip,
         }
     }
 
@@ -180,6 +183,15 @@ impl OpenAiLlmProvider {
     /// The instructions of classification requests (default `Legacy`, the production prompt).
     pub fn with_classification_prompt(mut self, prompt: ClassificationPrompt) -> Self {
         self.classification_prompt = prompt;
+        self
+    }
+
+    /// What extraction does with an out-of-vocabulary memory type (default `Skip`).
+    pub fn with_unknown_memory_type(
+        mut self,
+        policy: memcore_core::UnknownMemoryTypePolicy,
+    ) -> Self {
+        self.unknown_memory_type = policy;
         self
     }
 
@@ -306,7 +318,11 @@ impl OpenAiLlmProvider {
                 crate::prompts::structured_fact_extraction_json_schema(),
             )
             .await?;
-        parse_structured_fact_extraction_response(&text, &window)
+        parse_structured_fact_extraction_response_with_policy(
+            &text,
+            &window,
+            self.unknown_memory_type,
+        )
     }
 
     fn chat_thinking_option(&self) -> Option<serde_json::Value> {
@@ -456,7 +472,7 @@ impl LlmProvider for OpenAiLlmProvider {
             )
             .await?;
 
-        parse_fact_extraction_response(&text)
+        parse_fact_extraction_response_with_policy(&text, self.unknown_memory_type)
     }
 
     async fn classify_fact_operation(

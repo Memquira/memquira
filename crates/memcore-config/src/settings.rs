@@ -75,6 +75,10 @@ const MEMCORE_RELATED_FACT_MATCHER: &str = "MEMCORE_RELATED_FACT_MATCHER";
 const MEMCORE_CLASSIFICATION_PROMPT: &str = "MEMCORE_CLASSIFICATION_PROMPT";
 const MEMCORE_IMPORTANCE_POLICY: &str = "MEMCORE_IMPORTANCE_POLICY";
 const MEMCORE_TEMPORAL_REWRITE: &str = "MEMCORE_TEMPORAL_REWRITE";
+const MEMCORE_UNKNOWN_MEMORY_TYPE: &str = "MEMCORE_UNKNOWN_MEMORY_TYPE";
+const MEMCORE_EVENT_UPDATE_POLICY: &str = "MEMCORE_EVENT_UPDATE_POLICY";
+const MEMCORE_DEDUP_VALUE_GUARD: &str = "MEMCORE_DEDUP_VALUE_GUARD";
+const MEMCORE_RELATED_FACT_SIMILARITY_FLOOR: &str = "MEMCORE_RELATED_FACT_SIMILARITY_FLOOR";
 const MEMCORE_CONTEXT_DEFAULT_PACKING: &str = "MEMCORE_CONTEXT_DEFAULT_PACKING";
 const MEMCORE_CONSOLIDATION_CANDIDATES: &str = "MEMCORE_CONSOLIDATION_CANDIDATES";
 const MEMCORE_CONSOLIDATION_SIMILARITY_FLOOR: &str = "MEMCORE_CONSOLIDATION_SIMILARITY_FLOOR";
@@ -413,6 +417,40 @@ pub enum TemporalRewriteSetting {
     Legacy,
     /// Opt-in: only a time expression the resolver recognised is removed; a span with no time in it gives no event time; a date that is an attribute's value stays in the sentence. Not answer-validated.
     Preserving,
+}
+
+/// What extraction does with a fact whose memory type is outside the vocabulary
+/// (`MEMCORE_UNKNOWN_MEMORY_TYPE`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnknownMemoryTypeSetting {
+    /// The fact is discarded and counted as `unknown_memory_type`. Default.
+    Skip,
+    /// Experimental, opt-in: the fact is kept with memory type `other` and counted as a fallback.
+    Other,
+}
+
+/// Whether the semantic_v23 guard lets an Update supersede an `event` fact
+/// (`MEMCORE_EVENT_UPDATE_POLICY`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EventUpdatePolicySetting {
+    /// An event is history: an Update targeting it is stored as an Add. Default.
+    History,
+    /// Experimental, opt-in: an Update may supersede an event without an event time when the
+    /// candidate has no event time either and states a change ("now", "no longer", "moved", ...).
+    ChangeMarker,
+}
+
+/// Whether the near-duplicate dedup rules of the legacy ingest path compare values
+/// (`MEMCORE_DEDUP_VALUE_GUARD`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DedupValueGuardSetting {
+    /// A near-duplicate by wording (token overlap >= 0.90 or embedding cosine >= the threshold) is
+    /// discarded. Default.
+    Off,
+    /// Experimental, opt-in: a near-duplicate is discarded only when it states no value the matched
+    /// fact lacks, has the same polarity and a compatible event time; otherwise it continues to the
+    /// related-fact lookup and the classifier. Exact-text dedup is unchanged.
+    On,
 }
 
 /// Which extracted candidates pass the importance threshold (`MEMCORE_IMPORTANCE_POLICY`, Memcore
@@ -1021,6 +1059,15 @@ pub struct Settings {
     pub importance_policy: ImportancePolicySetting,
     /// Dated-fact sentence rewrite (`MEMCORE_TEMPORAL_REWRITE`, default `legacy`).
     pub temporal_rewrite: TemporalRewriteSetting,
+    /// Out-of-vocabulary memory types at extraction (`MEMCORE_UNKNOWN_MEMORY_TYPE`, default `skip`).
+    pub unknown_memory_type: UnknownMemoryTypeSetting,
+    /// Event targets under the semantic_v23 guard (`MEMCORE_EVENT_UPDATE_POLICY`, default `history`).
+    pub event_update_policy: EventUpdatePolicySetting,
+    /// Value-aware near-duplicate dedup (`MEMCORE_DEDUP_VALUE_GUARD`, default `off`).
+    pub dedup_value_guard: DedupValueGuardSetting,
+    /// Similarity floor of the semantic related-fact matchers
+    /// (`MEMCORE_RELATED_FACT_SIMILARITY_FLOOR`, default 0.5).
+    pub related_fact_similarity_floor: f32,
     /// Default packing of the server-side context endpoint (`MEMCORE_CONTEXT_DEFAULT_PACKING`, default
     /// `prefix`, the reference packing; `fill` / `evidence` opt in without a migration or data change).
     pub context_default_packing: ContextPacking,
@@ -1400,6 +1447,13 @@ impl fmt::Debug for Settings {
             .field("classification_prompt", &self.classification_prompt)
             .field("importance_policy", &self.importance_policy)
             .field("temporal_rewrite", &self.temporal_rewrite)
+            .field("unknown_memory_type", &self.unknown_memory_type)
+            .field("event_update_policy", &self.event_update_policy)
+            .field("dedup_value_guard", &self.dedup_value_guard)
+            .field(
+                "related_fact_similarity_floor",
+                &self.related_fact_similarity_floor,
+            )
             .field("context_default_packing", &self.context_default_packing)
             .field("consolidation_candidates", &self.consolidation_candidates)
             .field(
@@ -1583,6 +1637,10 @@ impl Default for Settings {
             consolidation_mode: ConsolidationMode::Legacy,
             related_fact_matcher: RelatedFactMatcher::Legacy,
             temporal_rewrite: TemporalRewriteSetting::Legacy,
+            unknown_memory_type: UnknownMemoryTypeSetting::Skip,
+            event_update_policy: EventUpdatePolicySetting::History,
+            dedup_value_guard: DedupValueGuardSetting::Off,
+            related_fact_similarity_floor: 0.5,
             importance_policy: ImportancePolicySetting::Legacy,
             classification_prompt: ClassificationPromptSetting::Legacy,
             context_default_packing: ContextPacking::Prefix,
@@ -2036,6 +2094,23 @@ impl Settings {
             ImportancePolicySetting::from_str(&read_env_or(MEMCORE_IMPORTANCE_POLICY, "legacy"))?;
         let temporal_rewrite =
             TemporalRewriteSetting::from_str(&read_env_or(MEMCORE_TEMPORAL_REWRITE, "legacy"))?;
+        let unknown_memory_type =
+            UnknownMemoryTypeSetting::from_str(&read_env_or(MEMCORE_UNKNOWN_MEMORY_TYPE, "skip"))?;
+        let event_update_policy = EventUpdatePolicySetting::from_str(&read_env_or(
+            MEMCORE_EVENT_UPDATE_POLICY,
+            "history",
+        ))?;
+        let dedup_value_guard =
+            DedupValueGuardSetting::from_str(&read_env_or(MEMCORE_DEDUP_VALUE_GUARD, "off"))?;
+        let related_fact_similarity_floor = parse_f32(
+            MEMCORE_RELATED_FACT_SIMILARITY_FLOOR,
+            defaults.related_fact_similarity_floor,
+        )?;
+        if !(0.0..=1.0).contains(&related_fact_similarity_floor) {
+            return Err(MemcoreError::ValidationError(
+                "MEMCORE_RELATED_FACT_SIMILARITY_FLOOR must be between 0.0 and 1.0".to_string(),
+            ));
+        }
         let context_default_packing =
             ContextPacking::from_str(&read_env_or(MEMCORE_CONTEXT_DEFAULT_PACKING, "prefix"))?;
         let consolidation_candidates = parse_usize(
@@ -2531,6 +2606,10 @@ impl Settings {
             consolidation_mode,
             related_fact_matcher,
             temporal_rewrite,
+            unknown_memory_type,
+            event_update_policy,
+            dedup_value_guard,
+            related_fact_similarity_floor,
             importance_policy,
             classification_prompt,
             context_default_packing,
@@ -2800,6 +2879,22 @@ impl Settings {
         need(
             self.temporal_rewrite == TemporalRewriteSetting::Legacy,
             "temporal_rewrite",
+        );
+        need(
+            self.unknown_memory_type == UnknownMemoryTypeSetting::Skip,
+            "unknown_memory_type",
+        );
+        need(
+            self.event_update_policy == EventUpdatePolicySetting::History,
+            "event_update_policy",
+        );
+        need(
+            self.dedup_value_guard == DedupValueGuardSetting::Off,
+            "dedup_value_guard",
+        );
+        need(
+            self.related_fact_similarity_floor == 0.5,
+            "related_fact_similarity_floor",
         );
         // The reference contexts were measured with prefix (the default again since 2026-10-28);
         // fill and evidence are not answer-validated (evidence: answer-worse in the reference evaluation).
@@ -4270,6 +4365,48 @@ impl FromStr for TemporalRewriteSetting {
     }
 }
 
+impl FromStr for UnknownMemoryTypeSetting {
+    type Err = MemcoreError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "skip" => Ok(Self::Skip),
+            "other" => Ok(Self::Other),
+            _ => Err(MemcoreError::ValidationError(format!(
+                "Invalid MEMCORE_UNKNOWN_MEMORY_TYPE value: {value} (expected skip|other)"
+            ))),
+        }
+    }
+}
+
+impl FromStr for DedupValueGuardSetting {
+    type Err = MemcoreError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "off" => Ok(Self::Off),
+            "on" => Ok(Self::On),
+            _ => Err(MemcoreError::ValidationError(format!(
+                "Invalid MEMCORE_DEDUP_VALUE_GUARD value: {value} (expected off|on)"
+            ))),
+        }
+    }
+}
+
+impl FromStr for EventUpdatePolicySetting {
+    type Err = MemcoreError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "history" => Ok(Self::History),
+            "change_marker" => Ok(Self::ChangeMarker),
+            _ => Err(MemcoreError::ValidationError(format!(
+                "Invalid MEMCORE_EVENT_UPDATE_POLICY value: {value} (expected history|change_marker)"
+            ))),
+        }
+    }
+}
+
 impl FromStr for ImportancePolicySetting {
     type Err = MemcoreError;
 
@@ -4434,6 +4571,10 @@ mod tests {
         "MEMCORE_CONSOLIDATION_MODE",
         "MEMCORE_RELATED_FACT_MATCHER",
         "MEMCORE_TEMPORAL_REWRITE",
+        "MEMCORE_UNKNOWN_MEMORY_TYPE",
+        "MEMCORE_EVENT_UPDATE_POLICY",
+        "MEMCORE_DEDUP_VALUE_GUARD",
+        "MEMCORE_RELATED_FACT_SIMILARITY_FLOOR",
         "MEMCORE_IMPORTANCE_POLICY",
         "MEMCORE_CLASSIFICATION_PROMPT",
         "MEMCORE_CONTEXT_DEFAULT_PACKING",
@@ -7174,6 +7315,22 @@ mod tests {
             (
                 "temporal_rewrite",
                 Box::new(|s| s.temporal_rewrite = TemporalRewriteSetting::Preserving),
+            ),
+            (
+                "unknown_memory_type",
+                Box::new(|s| s.unknown_memory_type = UnknownMemoryTypeSetting::Other),
+            ),
+            (
+                "event_update_policy",
+                Box::new(|s| s.event_update_policy = EventUpdatePolicySetting::ChangeMarker),
+            ),
+            (
+                "dedup_value_guard",
+                Box::new(|s| s.dedup_value_guard = DedupValueGuardSetting::On),
+            ),
+            (
+                "related_fact_similarity_floor",
+                Box::new(|s| s.related_fact_similarity_floor = 0.45),
             ),
             (
                 "context_default_packing",

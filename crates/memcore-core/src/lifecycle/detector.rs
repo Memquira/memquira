@@ -138,6 +138,27 @@ pub async fn find_related_facts_semantic(
     candidate: &CandidateFact,
     embedding: &[f32],
 ) -> MemcoreResult<Vec<Fact>> {
+    find_related_facts_semantic_with_floor(
+        fact_store,
+        vector_store,
+        tenant,
+        candidate,
+        embedding,
+        DEFAULT_CONSOLIDATION_SIMILARITY_FLOOR,
+    )
+    .await
+}
+
+/// [`find_related_facts_semantic`] with an explicit similarity floor
+/// (`MEMCORE_RELATED_FACT_SIMILARITY_FLOOR`; the default 0.5 is the function above).
+pub async fn find_related_facts_semantic_with_floor(
+    fact_store: &dyn FactStore,
+    vector_store: &dyn VectorStore,
+    tenant: &TenantContext,
+    candidate: &CandidateFact,
+    embedding: &[f32],
+    floor: f32,
+) -> MemcoreResult<Vec<Fact>> {
     let hits = vector_store
         .search_vectors(VectorSearchQuery {
             tenant: tenant.clone(),
@@ -152,9 +173,7 @@ pub async fn find_related_facts_semantic(
         if related.len() == RELATED_FACTS_SEARCH_LIMIT {
             break;
         }
-        if hit.score < DEFAULT_CONSOLIDATION_SIMILARITY_FLOOR
-            || related.iter().any(|fact| fact.id == hit.fact_id)
-        {
+        if hit.score < floor || related.iter().any(|fact| fact.id == hit.fact_id) {
             continue;
         }
         let fact = fact_store.get_fact(tenant, hit.fact_id).await?;
@@ -194,6 +213,27 @@ pub async fn find_related_facts_semantic_v23(
     candidate: &CandidateFact,
     embedding: &[f32],
 ) -> MemcoreResult<Vec<Fact>> {
+    find_related_facts_semantic_v23_with_floor(
+        fact_store,
+        vector_store,
+        tenant,
+        candidate,
+        embedding,
+        DEFAULT_CONSOLIDATION_SIMILARITY_FLOOR,
+    )
+    .await
+}
+
+/// [`find_related_facts_semantic_v23`] with an explicit similarity floor
+/// (`MEMCORE_RELATED_FACT_SIMILARITY_FLOOR`; the default 0.5 is the function above).
+pub async fn find_related_facts_semantic_v23_with_floor(
+    fact_store: &dyn FactStore,
+    vector_store: &dyn VectorStore,
+    tenant: &TenantContext,
+    candidate: &CandidateFact,
+    embedding: &[f32],
+    floor: f32,
+) -> MemcoreResult<Vec<Fact>> {
     let hits = vector_store
         .search_vectors(VectorSearchQuery {
             tenant: tenant.clone(),
@@ -208,9 +248,7 @@ pub async fn find_related_facts_semantic_v23(
         if related.len() == RELATED_FACTS_SEARCH_LIMIT {
             break;
         }
-        if hit.score < DEFAULT_CONSOLIDATION_SIMILARITY_FLOOR
-            || related.iter().any(|fact| fact.id == hit.fact_id)
-        {
+        if hit.score < floor || related.iter().any(|fact| fact.id == hit.fact_id) {
             continue;
         }
         let fact = fact_store.get_fact(tenant, hit.fact_id).await?;
@@ -254,7 +292,13 @@ pub fn guard_related_decision(
     offered: &[Fact],
     candidate: &CandidateFact,
 ) -> RelatedDecision {
-    guard_with(decision, offered, candidate, different_subjects)
+    guard_with(
+        decision,
+        offered,
+        candidate,
+        different_subjects,
+        EventUpdatePolicy::History,
+    )
 }
 
 /// [`guard_related_decision`] for the V2.3 candidate matcher: the same rules, with subjects
@@ -264,7 +308,91 @@ pub fn guard_related_decision_v23(
     offered: &[Fact],
     candidate: &CandidateFact,
 ) -> RelatedDecision {
-    guard_with(decision, offered, candidate, different_canonical_subjects)
+    guard_related_decision_v23_with_policy(decision, offered, candidate, EventUpdatePolicy::History)
+}
+
+/// Whether the semantic_v23 guard lets an Update supersede an `event` fact
+/// (`MEMCORE_EVENT_UPDATE_POLICY`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EventUpdatePolicy {
+    /// An event is history and is never superseded (`event_is_history`). Default.
+    #[default]
+    History,
+    /// Experimental: an `event` target without an event time may be superseded by a candidate that
+    /// has no event time either and whose sentence states a change ([`states_a_change`]). A
+    /// standing fact the extractor typed as an event ("The choir rehearses in the church hall.")
+    /// can then follow "The choir now rehearses at the library."; a second event of the same kind
+    /// without a change word ("ran the Paris marathon" after "ran the Berlin marathon") stays an Add.
+    ChangeMarker,
+}
+
+impl EventUpdatePolicy {
+    /// The label used in configuration and audit metadata.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::History => "history",
+            Self::ChangeMarker => "change_marker",
+        }
+    }
+}
+
+/// Words and phrases that state a change of a standing fact. Compared as whole lower-case tokens.
+const CHANGE_MARKERS: [&[&str]; 13] = [
+    &["now"],
+    &["no", "longer"],
+    &["anymore"],
+    &["any", "more"],
+    &["instead"],
+    &["moved"],
+    &["switched"],
+    &["changed"],
+    &["stopped"],
+    &["nowadays"],
+    &["these", "days"],
+    &["used", "to"],
+    &["from", "now", "on"],
+];
+
+/// The sentence contains a change marker ("now", "no longer", "moved", ...) as whole words.
+pub fn states_a_change(content: &str) -> bool {
+    let tokens: Vec<String> = content
+        .split(|c: char| !c.is_alphanumeric() && c != '\'')
+        .filter(|token| !token.is_empty())
+        .map(str::to_lowercase)
+        .collect();
+    CHANGE_MARKERS.iter().any(|marker| {
+        tokens
+            .windows(marker.len())
+            .any(|window| window.iter().zip(marker.iter()).all(|(t, m)| t == m))
+    })
+}
+
+/// [`guard_related_decision_v23`] with an explicit event policy.
+pub fn guard_related_decision_v23_with_policy(
+    decision: &FactOperationDecision,
+    offered: &[Fact],
+    candidate: &CandidateFact,
+    events: EventUpdatePolicy,
+) -> RelatedDecision {
+    guard_with(
+        decision,
+        offered,
+        candidate,
+        different_canonical_subjects,
+        events,
+    )
+}
+
+/// An `event` target the policy lets this candidate supersede.
+fn event_may_be_superseded(
+    events: EventUpdatePolicy,
+    candidate: &CandidateFact,
+    target: &Fact,
+) -> bool {
+    events == EventUpdatePolicy::ChangeMarker
+        && target.structure.event_time.is_none()
+        && candidate.structure.event_time.is_none()
+        && states_a_change(&candidate.content)
 }
 
 fn guard_with(
@@ -272,6 +400,7 @@ fn guard_with(
     offered: &[Fact],
     candidate: &CandidateFact,
     different_subjects: fn(&CandidateFact, &Fact) -> bool,
+    events: EventUpdatePolicy,
 ) -> RelatedDecision {
     if !matches!(
         decision.operation,
@@ -288,7 +417,12 @@ fn guard_with(
     let refusal = match target {
         None => "target_not_offered",
         Some(fact) if different_subjects(candidate, fact) => "different_subject",
-        Some(fact) if fact.memory_type == MemoryType::Event => "event_is_history",
+        Some(fact)
+            if fact.memory_type == MemoryType::Event
+                && !event_may_be_superseded(events, candidate, fact) =>
+        {
+            "event_is_history"
+        }
         Some(fact) if distinct_event_times(candidate, fact) => "distinct_event_times",
         Some(fact) => return RelatedDecision::Supersede { target: fact.id },
     };

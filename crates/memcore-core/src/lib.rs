@@ -76,9 +76,12 @@ pub use context::{
 };
 pub use dedup::{
     DEFAULT_EMBEDDING_DEDUP_SEARCH_LIMIT, DEFAULT_EMBEDDING_DEDUP_SIMILARITY_THRESHOLD,
-    DeduplicationDecision, EXACT_DUPLICATE_THRESHOLD, EmbeddingDeduplicationConfig, ExactDedupRule,
-    HIGH_SIMILARITY_DUPLICATE_THRESHOLD, MODERATE_SIMILARITY_THRESHOLD, detect_duplicate,
-    detect_embedding_duplicate, exact_dedup_key, find_existing_facts_for_dedup, normalize_content,
+    DedupValueGuard, DeduplicationDecision, EXACT_DUPLICATE_THRESHOLD,
+    EmbeddingDeduplicationConfig, ExactDedupRule, HIGH_SIMILARITY_DUPLICATE_THRESHOLD,
+    MODERATE_SIMILARITY_THRESHOLD, SentenceValues, ValueConflict, detect_duplicate,
+    detect_duplicate_guarded, detect_embedding_duplicate, detect_embedding_duplicate_guarded,
+    exact_dedup_key, find_existing_facts_for_dedup, normalize_content, sentence_values,
+    value_compatibility,
 };
 pub use engine::{
     AddMemoryInput, AddMemoryOutput, CompleteExportInput, DEFAULT_LIST_MEMORIES_LIMIT,
@@ -127,7 +130,7 @@ pub use jobs::{
     ProviderUsageRetentionJob, calculate_background_job_backoff,
     execute_background_job_with_retries, is_retryable_job_error,
 };
-pub use lifecycle::RelatedFactMatcher;
+pub use lifecycle::{EventUpdatePolicy, RelatedFactMatcher};
 pub use models::{
     AliasSource, ApiKeyRecord, ApiKeyScope, CandidateFact, Entity, EntityAlias, EntityRelation,
     EntityRole, EntityType, Episode, Fact, FactEntityLink, FactOperation, FactOperationDecision,
@@ -155,9 +158,10 @@ pub use ports::{
     ProviderUsageAttributionSlot, ProviderUsageCapability, ProviderUsageDailyQuery,
     ProviderUsageEventRecord, ProviderUsagePersistedSummary, ProviderUsageQuery,
     ProviderUsageQueryResult, ProviderUsageStore, RetentionPruneResult, StoredBackgroundJobRun,
-    StoredFactState, SummarizationInput, VectorRecord, VectorSearchQuery, VectorSearchResult,
-    VectorStore, VectorWriteIntent, lock_until_from_ttl, sanitize_background_job_error_message,
-    validate_background_job_run_limit, validate_event_date_range, validate_provider_usage_limit,
+    StoredFactState, SummarizationInput, UnknownMemoryTypePolicy, VectorRecord, VectorSearchQuery,
+    VectorSearchResult, VectorStore, VectorWriteIntent, lock_until_from_ttl,
+    sanitize_background_job_error_message, validate_background_job_run_limit,
+    validate_event_date_range, validate_provider_usage_limit,
 };
 pub use privacy::PiiRedactor;
 pub use query::{QueryAnalysis, QuestionType, TemporalConstraint, TemporalOrdinal, analyze};

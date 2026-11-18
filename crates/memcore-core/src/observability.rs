@@ -48,6 +48,24 @@ pub(crate) fn record_vector_hit_rejected(path: &'static str, reason: &'static st
     metrics::counter!(VECTOR_HIT_REJECTED_METRIC, "path" => path, "reason" => reason).increment(1);
 }
 
+/// Counter of near-duplicate hits the value guard examined
+/// (`MEMCORE_DEDUP_VALUE_GUARD=on`), labelled `path` (`content`: token-overlap rule, `embedding`:
+/// vector rule) and `outcome` (`duplicate`: value-compatible, discarded as before; or the conflict
+/// that kept the candidate: `new_value`, `polarity`, `event_time`). Never records ids or text.
+pub const DEDUP_VALUE_GUARD_METRIC: &str = "memcore_dedup_value_guard_total";
+
+/// `path` values of [`DEDUP_VALUE_GUARD_METRIC`].
+pub const DEDUP_VALUE_GUARD_PATHS: &[&str] = &["content", "embedding"];
+
+/// `outcome` values of [`DEDUP_VALUE_GUARD_METRIC`].
+pub const DEDUP_VALUE_GUARD_OUTCOMES: &[&str] =
+    &["duplicate", "new_value", "polarity", "event_time"];
+
+/// Counts one near-duplicate hit examined by the value guard.
+pub(crate) fn record_dedup_value_guard(path: &'static str, outcome: &'static str) {
+    metrics::counter!(DEDUP_VALUE_GUARD_METRIC, "path" => path, "outcome" => outcome).increment(1);
+}
+
 /// Counter of write failures by path. One increment means one logical
 /// operation that failed after it had committed a write to one store, so another store was left
 /// without the matching write (a cross-store window that a retry or `verify-vectors` must close),

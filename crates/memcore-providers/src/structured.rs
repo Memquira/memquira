@@ -11,7 +11,7 @@ use memcore_common::{MemcoreError, MemcoreResult};
 use memcore_core::temporal::parse_lenient_timestamp;
 use memcore_core::{
     CandidateFact, CandidateSkipReason, FactExtractionOutput, FactStructure, MemoryType,
-    TemporalGranularity, TemporalValue,
+    TemporalGranularity, TemporalValue, UnknownMemoryTypePolicy,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -156,6 +156,39 @@ fn repair_trailing_closers(text: &str) -> Option<String> {
     (repaired != body).then_some(repaired)
 }
 
+/// Removes commas that directly precede a closing bracket (`"subject": "user",\n}`), the only
+/// defect in otherwise complete replies seen in an internal long-conversation evaluation (4 of
+/// 20,374 replies, every comma after the last key of a fact). JSON strings are skipped with their escapes, so a `,}`
+/// inside a value is never touched; nothing else in the reply changes. Returns the reply without
+/// those commas and how many were removed, or `None` when there are none.
+fn repair_trailing_commas(text: &str) -> Option<(String, usize)> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut repaired = String::with_capacity(text.len());
+    let mut removed = 0;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (index, &c) in chars.iter().enumerate() {
+        if in_string {
+            match c {
+                _ if escaped => escaped = false,
+                '\\' => escaped = true,
+                '"' => in_string = false,
+                _ => {}
+            }
+        } else if c == '"' {
+            in_string = true;
+        } else if c == ',' {
+            let next = chars[index + 1..].iter().find(|next| !next.is_whitespace());
+            if matches!(next, Some('}' | ']')) {
+                removed += 1;
+                continue;
+            }
+        }
+        repaired.push(c);
+    }
+    (removed > 0).then_some((repaired, removed))
+}
+
 /// Reads the reply through `Value` first: a model that repeats a key within one fact (seen with
 /// `event_time`) then gets the last value, as other JSON readers give it, instead of failing the
 /// whole reply on serde's duplicate-field check.
@@ -168,24 +201,51 @@ pub fn parse_structured_fact_extraction_response(
     text: &str,
     window: &StructuredWindow,
 ) -> MemcoreResult<FactExtractionOutput> {
+    parse_structured_fact_extraction_response_with_policy(
+        text,
+        window,
+        UnknownMemoryTypePolicy::Skip,
+    )
+}
+
+/// [`parse_structured_fact_extraction_response`] with an explicit policy for out-of-vocabulary
+/// memory types (`MEMCORE_UNKNOWN_MEMORY_TYPE`).
+pub fn parse_structured_fact_extraction_response_with_policy(
+    text: &str,
+    window: &StructuredWindow,
+    unknown_memory_type: UnknownMemoryTypePolicy,
+) -> MemcoreResult<FactExtractionOutput> {
     let parsed: StructuredResponse = match read_structured_response(text) {
         Ok(parsed) => parsed,
         Err(error) => {
-            let repaired = repair_trailing_closers(text)
+            // Repairs run only after the strict read failed, one at a time, and their result is
+            // read strictly again against the same schema; a reply neither repair makes readable
+            // keeps the original error.
+            let closers = repair_trailing_closers(text)
                 .and_then(|repaired| read_structured_response(&repaired).ok());
-            match repaired {
-                Some(parsed) => {
-                    tracing::warn!(
-                        event = "structured_extraction_closers_repaired",
-                        "the model closed the reply's brackets in the wrong order; rebuilt them"
-                    );
-                    parsed
-                }
-                None => {
-                    return Err(MemcoreError::ProviderError(format!(
-                        "invalid structured fact extraction JSON from model: {error}"
-                    )));
-                }
+            if let Some(parsed) = closers {
+                tracing::warn!(
+                    event = "structured_extraction_closers_repaired",
+                    "the model closed the reply's brackets in the wrong order; rebuilt them"
+                );
+                parsed
+            } else if let Some((parsed, removed)) =
+                repair_trailing_commas(text).and_then(|(repaired, removed)| {
+                    read_structured_response(&repaired)
+                        .ok()
+                        .map(|parsed| (parsed, removed))
+                })
+            {
+                tracing::warn!(
+                    event = "structured_extraction_trailing_commas_repaired",
+                    removed,
+                    "the model left commas before closing brackets; removed them"
+                );
+                parsed
+            } else {
+                return Err(MemcoreError::ProviderError(format!(
+                    "invalid structured fact extraction JSON from model: {error}"
+                )));
             }
         }
     };
@@ -194,6 +254,15 @@ pub fn parse_structured_fact_extraction_response(
     for fact in parsed.facts {
         let memory_type = match MemoryType::parse_label(&fact.memory_type) {
             Ok(value) => value,
+            Err(_) if unknown_memory_type == UnknownMemoryTypePolicy::Other => {
+                tracing::warn!(
+                    event = "fact_memory_type_fallback",
+                    memory_type = %sanitize_for_log(&fact.memory_type),
+                    "keeping an extracted fact whose memory type is not in the vocabulary as other"
+                );
+                output.memory_type_fallback += 1;
+                MemoryType::Other
+            }
             Err(_) => {
                 tracing::warn!(
                     event = "fact_candidate_skipped",
@@ -488,6 +557,46 @@ mod tests {
         assert_eq!(output.skipped.get(CandidateSkipReason::InvalidCandidate), 1);
     }
 
+    /// With `UnknownMemoryTypePolicy::Other` an out-of-vocabulary type keeps the
+    /// fact as `other` (counted as a fallback, not a skip); invalid facts are still skipped; the
+    /// default policy is the function above, byte for byte.
+    #[test]
+    fn the_other_policy_keeps_unknown_types_as_other() {
+        let reply = r#"{"facts":[
+            {"content":"Priya does bouldering.","memory_type":"Activity","subject":"Priya","event_time":null,"source_message_ids":[],"confidence":0.9,"importance":0.8},
+            {"content":"Priya likes tea.","memory_type":"Preference","subject":"Priya","event_time":null,"source_message_ids":[],"confidence":0.9,"importance":0.8},
+            {"content":"","memory_type":"Casserole","subject":null,"event_time":null,"source_message_ids":[],"confidence":0.9,"importance":0.8}
+        ]}"#;
+        let kept = parse_structured_fact_extraction_response_with_policy(
+            reply,
+            &window(),
+            UnknownMemoryTypePolicy::Other,
+        )
+        .unwrap();
+        assert_eq!(kept.candidates.len(), 2);
+        assert_eq!(kept.candidates[0].memory_type, MemoryType::Other);
+        assert_eq!(kept.candidates[0].content, "Priya does bouldering.");
+        assert_eq!(kept.candidates[1].memory_type, MemoryType::Preference);
+        assert_eq!(kept.memory_type_fallback, 2);
+        assert_eq!(kept.skipped.get(CandidateSkipReason::UnknownMemoryType), 0);
+        assert_eq!(kept.skipped.get(CandidateSkipReason::InvalidCandidate), 1);
+
+        let default = parse_structured_fact_extraction_response(reply, &window()).unwrap();
+        let skip = parse_structured_fact_extraction_response_with_policy(
+            reply,
+            &window(),
+            UnknownMemoryTypePolicy::Skip,
+        )
+        .unwrap();
+        assert_eq!(default, skip);
+        assert_eq!(default.candidates.len(), 1);
+        assert_eq!(default.memory_type_fallback, 0);
+        assert_eq!(
+            default.skipped.get(CandidateSkipReason::UnknownMemoryType),
+            2
+        );
+    }
+
     #[test]
     fn malformed_json_is_a_provider_error() {
         let error =
@@ -543,6 +652,115 @@ mod tests {
         assert_eq!(
             output.candidates[0].structure.event_time_text.as_deref(),
             Some("last Saturday")
+        );
+    }
+
+    /// Synthetic reply in the observed shape: alphabetical keys, a comma after the last
+    /// key (`subject`) of some facts.
+    fn comma_reply(commas: &[bool]) -> String {
+        let facts: Vec<String> = commas
+            .iter()
+            .enumerate()
+            .map(|(i, comma)| {
+                format!(
+                    "    {{\n      \"confidence\": 0.9,\n      \"content\": \"Priya adopted dog number {i}.\",\n      \"event_time\": {{\n        \"end\": \"2023-05-07\",\n        \"granularity\": \"day\",\n        \"start\": \"2023-05-07\",\n        \"text\": null\n      }},\n      \"importance\": 0.8,\n      \"memory_type\": \"event\",\n      \"source_message_ids\": [\n        \"D1:1\"\n      ],\n      \"subject\": \"Priya\"{}\n    }}",
+                    if *comma { "," } else { "" }
+                )
+            })
+            .collect();
+        format!("{{\n  \"facts\": [\n{}\n  ]\n}}", facts.join(",\n"))
+    }
+
+    #[test]
+    fn trailing_commas_after_the_last_key_are_removed_and_the_facts_kept() {
+        for commas in [
+            vec![true, false],
+            vec![true, true, true, true],
+            vec![true, true],
+            vec![false, true],
+        ] {
+            let reply = comma_reply(&commas);
+            let clean = comma_reply(&vec![false; commas.len()]);
+            assert!(
+                serde_json::from_str::<Value>(&reply).is_err(),
+                "fixture must be invalid"
+            );
+            let (repaired, removed) = repair_trailing_commas(&reply).unwrap();
+            assert_eq!(repaired, clean);
+            assert_eq!(removed, commas.iter().filter(|c| **c).count());
+            let output = parse_structured_fact_extraction_response(&reply, &window()).unwrap();
+            assert_eq!(output.candidates.len(), commas.len());
+            assert_eq!(
+                output,
+                parse_structured_fact_extraction_response(&clean, &window()).unwrap(),
+                "the repaired reply reads exactly like the clean one"
+            );
+        }
+    }
+
+    #[test]
+    fn trailing_commas_before_any_closer_are_removed_but_nothing_else() {
+        for (reply, expected) in [
+            (r#"{"facts":[{"a":1,}]}"#, r#"{"facts":[{"a":1}]}"#),
+            (r#"{"facts":[{"a":1},]}"#, r#"{"facts":[{"a":1}]}"#),
+            (
+                r#"{"facts":[{"ids":["m1",]}]}"#,
+                r#"{"facts":[{"ids":["m1"]}]}"#,
+            ),
+            (
+                r#"{"facts":[{"t":{"x":"y",},}],}"#,
+                r#"{"facts":[{"t":{"x":"y"}}]}"#,
+            ),
+            (
+                r#"{"facts":[{"s":"keep ,} and ,] here","a":1,}]}"#,
+                r#"{"facts":[{"s":"keep ,} and ,] here","a":1}]}"#,
+            ),
+            (
+                "{\"facts\":[{\"s\":\"an \\\",} escaped quote\",\"a\":1 ,\n }]}",
+                "{\"facts\":[{\"s\":\"an \\\",} escaped quote\",\"a\":1 \n }]}",
+            ),
+        ] {
+            assert_eq!(
+                repair_trailing_commas(reply).map(|(r, _)| r).as_deref(),
+                Some(expected),
+                "{reply}"
+            );
+        }
+    }
+
+    #[test]
+    fn replies_without_trailing_commas_are_left_alone() {
+        for reply in [
+            r#"{"facts":[{"a":1},{"b":2}]}"#,
+            r#"{"facts":[{"s":"text with ,} inside","a":1}]}"#,
+            r#"{"facts":[{"a":"cut off"#,
+            r#"{"facts":[]}"#,
+        ] {
+            assert_eq!(repair_trailing_commas(reply), None, "{reply}");
+        }
+    }
+
+    #[test]
+    fn a_truncated_reply_with_a_trailing_comma_is_still_rejected() {
+        let mut reply = comma_reply(&[true, false]);
+        reply.truncate(reply.len() - 40);
+        reply.push_str("\"cut off mid");
+        let error = parse_structured_fact_extraction_response(&reply, &window()).unwrap_err();
+        assert!(matches!(error, MemcoreError::ProviderError(_)));
+    }
+
+    /// Valid replies are read by the strict path; the comma repair would not change them anyway.
+    #[test]
+    fn valid_replies_are_unchanged_by_the_comma_repair() {
+        let clean = comma_reply(&[false, false, false]);
+        assert_eq!(repair_trailing_commas(&clean), None);
+        assert!(read_structured_response(&clean).is_ok());
+        assert_eq!(
+            parse_structured_fact_extraction_response(&clean, &window())
+                .unwrap()
+                .candidates
+                .len(),
+            3
         );
     }
 
