@@ -1,6 +1,7 @@
 # Examples
 
-Integration examples for the Memquira HTTP API. These are examples, **not** published SDK packages.
+Integration examples for the Memquira HTTP API. These are examples, **not** published SDK packages. For Python
+applications, use the client in [clients/python](../clients/python/) instead of copying the example.
 
 | Directory | Language | Notes |
 |-----------|----------|-------|

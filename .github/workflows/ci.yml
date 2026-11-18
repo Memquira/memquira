@@ -137,3 +137,81 @@ jobs:
           build-args: CARGO_FEATURES=postgres,qdrant
           push: false
           tags: memquira:ci
+
+  python-client:
+    name: Python client (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.13"]
+    defaults:
+      run:
+        working-directory: clients/python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e ".[test]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy
+      # Unit tests use a mocked transport; the end-to-end tests skip here and run in the next job.
+      - run: pytest -q
+
+  python-client-e2e:
+    name: Python client end to end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p memcore-api --bin memcore-api
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m pip install -e "clients/python[test]"
+      # The local development configuration: SQLite, mock vector store and mock models, so no provider is called.
+      - name: Start memcore-api
+        env:
+          MEMCORE_ENV: development
+          MEMCORE_HOST: 127.0.0.1
+          MEMCORE_PORT: "8080"
+          MEMCORE_STORAGE_MODE: embedded
+          MEMCORE_FACT_BACKEND: sqlite
+          MEMCORE_EVENT_BACKEND: sqlite
+          MEMCORE_VECTOR_BACKEND: mock
+          MEMCORE_DATABASE_URL: sqlite://${{ runner.temp }}/memcore.db?mode=rwc
+          MEMCORE_EPISODES_ENABLED: "true"
+          MEMCORE_SEARCH_MAX_LIMIT: "100"
+          MEMCORE_LLM_PROVIDER: mock
+          MEMCORE_LLM_MODEL: mock-llm
+          MEMCORE_EMBEDDING_PROVIDER: mock
+          MEMCORE_EMBEDDING_MODEL: mock-embedding
+          MEMCORE_ALLOW_MOCK: "true"
+          MEMCORE_AUTH_ENABLED: "true"
+          MEMCORE_AUTH_MODE: dev
+          MEMCORE_DEV_API_KEY: memcore_dev_key
+          MEMCORE_RATE_LIMIT_ENABLED: "false"
+          MEMCORE_LOG_FORMAT: json
+          MEMCORE_LOG_LEVEL: warn
+        run: |
+          nohup target/debug/memcore-api > "${RUNNER_TEMP}/memcore-api.log" 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8080/health/ready > /dev/null && exit 0
+            sleep 1
+          done
+          cat "${RUNNER_TEMP}/memcore-api.log"
+          exit 1
+      - name: End-to-end tests
+        working-directory: clients/python
+        env:
+          MEMQUIRA_E2E_URL: http://127.0.0.1:8080
+          MEMQUIRA_E2E_API_KEY: memcore_dev_key
+          MEMQUIRA_E2E_ORG_ID: ci
+        run: pytest -q -rs tests/test_e2e_local.py
+      - name: Server log on failure
+        if: failure()
+        run: cat "${RUNNER_TEMP}/memcore-api.log"
