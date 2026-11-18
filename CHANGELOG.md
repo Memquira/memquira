@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file. The project fol
 
 ## [Unreleased]
 
+### Added
+
+- Python client in `clients/python` (package `memquira`, sync and async, typed results and errors,
+  safe automatic retries, a per-user view for agent integrations). Install it with
+  `pip install ./clients/python`; it is not published to PyPI yet.
+
 ## [0.2.0] - 2026-11-18
 
 ### Added
