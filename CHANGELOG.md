@@ -5,6 +5,8 @@ All notable changes to this project are documented in this file. The project fol
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-18
+
 ### Added
 
 - Opt-in memory update settings, all off by default: `MEMCORE_UNKNOWN_MEMORY_TYPE`, `MEMCORE_EVENT_UPDATE_POLICY`,
@@ -22,6 +24,15 @@ All notable changes to this project are documented in this file. The project fol
   date after an article ("is on the 16th of June") is kept as the sentence's value.
 - Structured extraction accepts a reply whose only defect is a trailing comma before a closing bracket, instead of
   rejecting the whole window. Commas inside strings are never changed.
+
+### Security
+
+- Updated quinn-udp to 0.5.16 (RUSTSEC-2026-0538). It is reachable only through an optional HTTP/3 dependency
+  that no feature enables.
+- RUSTSEC-2026-0459 (bundled SQLite in libsqlite3-sys 0.30.1) and RUSTSEC-2026-0543 (chrono unmaintained) are
+  accepted risks under the supported deployment trust model, not patched vulnerabilities. Each is excepted by its
+  advisory id only; rationale, residual exposure and removal conditions are in
+  [docs/security.md](docs/security.md#advisory-exceptions) (tracking issues #2 and #3).
 
 ## [0.1.0] - 2026-11-06
 
