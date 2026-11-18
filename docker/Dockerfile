@@ -5,7 +5,7 @@
 # Examples:
 #   docker build -f docker/Dockerfile --build-arg CARGO_FEATURES=postgres -t memcore-api:postgres .
 #   docker build -f docker/Dockerfile --build-arg CARGO_FEATURES="postgres,qdrant" -t memcore-api:prod .
-#   docker build -f docker/Dockerfile --build-arg APP_VERSION=0.1.0 --build-arg GIT_SHA=abc123 -t memcore:0.1.0 .
+#   docker build -f docker/Dockerfile --build-arg APP_VERSION=0.2.0 --build-arg GIT_SHA=abc123 -t memcore:0.2.0 .
 #
 # Security notes: runtime runs as non-root `memcore`; do not bake secrets into the image.
 # See docs/security.md.
