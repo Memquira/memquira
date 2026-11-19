@@ -8,7 +8,7 @@
 name: memquira-local
 
 services:
-  memcore:
+  memquira:
     build:
       context: ..
       dockerfile: docker/Dockerfile
@@ -16,42 +16,42 @@ services:
       # Loopback only: the local development key is public.
       - "127.0.0.1:8080:8080"
     environment:
-      MEMCORE_ENV: development
-      MEMCORE_HOST: 0.0.0.0
-      MEMCORE_PORT: 8080
+      MEMQUIRA_ENV: development
+      MEMQUIRA_HOST: 0.0.0.0
+      MEMQUIRA_PORT: 8080
 
-      MEMCORE_STORAGE_MODE: embedded
-      MEMCORE_FACT_BACKEND: sqlite
-      MEMCORE_EVENT_BACKEND: sqlite
-      MEMCORE_VECTOR_BACKEND: mock
+      MEMQUIRA_STORAGE_MODE: embedded
+      MEMQUIRA_FACT_BACKEND: sqlite
+      MEMQUIRA_EVENT_BACKEND: sqlite
+      MEMQUIRA_VECTOR_BACKEND: mock
 
       # `mode=rwc` lets SQLite create the database file on first start.
-      MEMCORE_DATABASE_URL: sqlite:///app/data/memcore.db?mode=rwc
-      MEMCORE_DATABASE_MIGRATION_MODE: auto
+      MEMQUIRA_DATABASE_URL: sqlite:///app/data/memcore.db?mode=rwc
+      MEMQUIRA_DATABASE_MIGRATION_MODE: auto
 
       # A search limit of 100 is required by POST /api/v1/memories/context; episodes add source messages
       # to the context and enable message-id deduplication.
-      MEMCORE_EPISODES_ENABLED: "true"
-      MEMCORE_SEARCH_MAX_LIMIT: 100
+      MEMQUIRA_EPISODES_ENABLED: "true"
+      MEMQUIRA_SEARCH_MAX_LIMIT: 100
 
-      MEMCORE_LLM_PROVIDER: mock
-      MEMCORE_LLM_MODEL: mock-llm
-      MEMCORE_EMBEDDING_PROVIDER: mock
-      MEMCORE_EMBEDDING_MODEL: mock-embedding
+      MEMQUIRA_LLM_PROVIDER: mock
+      MEMQUIRA_LLM_MODEL: mock-llm
+      MEMQUIRA_EMBEDDING_PROVIDER: mock
+      MEMQUIRA_EMBEDDING_MODEL: mock-embedding
       # Local development only: the server refuses mock providers unless this is set.
-      MEMCORE_ALLOW_MOCK: "true"
+      MEMQUIRA_ALLOW_MOCK: "true"
 
-      MEMCORE_AUTH_ENABLED: "true"
-      MEMCORE_AUTH_MODE: dev
-      MEMCORE_DEV_API_KEY: memcore_dev_key
+      MEMQUIRA_AUTH_ENABLED: "true"
+      MEMQUIRA_AUTH_MODE: dev
+      MEMQUIRA_DEV_API_KEY: memcore_dev_key
 
-      MEMCORE_RATE_LIMIT_ENABLED: "true"
-      MEMCORE_RATE_LIMIT_REQUESTS_PER_MINUTE: 60
+      MEMQUIRA_RATE_LIMIT_ENABLED: "true"
+      MEMQUIRA_RATE_LIMIT_REQUESTS_PER_MINUTE: 60
 
-      MEMCORE_LOG_FORMAT: pretty
-      MEMCORE_LOG_LEVEL: info
-      MEMCORE_METRICS_ENABLED: "true"
-      MEMCORE_CORS_ENABLED: "false"
+      MEMQUIRA_LOG_FORMAT: pretty
+      MEMQUIRA_LOG_LEVEL: info
+      MEMQUIRA_METRICS_ENABLED: "true"
+      MEMQUIRA_CORS_ENABLED: "false"
     volumes:
       - memcore_data:/app/data
     healthcheck:

@@ -2,7 +2,7 @@
 
 Base URL: `http://<host>:8080`. All API routes are under `/api/v1` and exchange JSON. The machine-readable contract
 is the OpenAPI 3 document, served at `GET /openapi.json` (Swagger UI at `GET /docs`) and committed as
-[`openapi/memcore.openapi.json`](../openapi/memcore.openapi.json). This page covers the endpoints an application
+[`openapi/memquira.openapi.json`](../openapi/memquira.openapi.json). This page covers the endpoints an application
 integrates with; field-level details for every endpoint are in the OpenAPI document.
 
 ## Authentication and tenancy
@@ -17,7 +17,7 @@ X-Organization-ID: <org_id>
 - In `database` auth mode an API key belongs to one organization and carries scopes; it can only act for its own
   organization. Keys are created with
   `POST /api/v1/api-keys` (see [Keys](#api-keys)).
-- In `dev` mode one shared key (`MEMCORE_DEV_API_KEY`) works for every organization and scopes are not enforced.
+- In `dev` mode one shared key (`MEMQUIRA_DEV_API_KEY`) works for every organization and scopes are not enforced.
   Use it only locally.
 - `user_id` identifies the end user inside the organization. Memquira does not authenticate end users: your
   backend decides which `user_id` a request acts for. Never let a browser choose it.
@@ -77,7 +77,7 @@ curl -s -X POST "$MEMQUIRA_URL/api/v1/memories" \
 ```
 
 `message_id` makes retries safe: a message already stored with that id is not stored again, and the same id with a
-different message returns `409 MESSAGE_ID_CONFLICT` (requires `MEMCORE_EPISODES_ENABLED=true`). Typical errors:
+different message returns `409 MESSAGE_ID_CONFLICT` (requires `MEMQUIRA_EPISODES_ENABLED=true`). Typical errors:
 `400 VALIDATION_ERROR`, `401`, `403`, `409 MESSAGE_ID_CONFLICT`, `429 RATE_LIMITED` / `QUOTA_EXCEEDED`,
 `502 PROVIDER_ERROR` / `PROVIDER_OUTPUT_INVALID`, `503 OVERLOADED` / `PROVIDER_THROTTLED`, `504 TIMEOUT`.
 
@@ -88,8 +88,8 @@ Scope: `MemoryRead`.
 | Field | Type | Notes |
 |---|---|---|
 | `user_id`, `query` | string, required | |
-| `limit` | integer | Default 10; at most `MEMCORE_SEARCH_MAX_LIMIT` |
-| `retrieval_mode` | string | `hybrid`, `semantic`, `fulltext` or `rrf`; default from `MEMCORE_SEARCH_STRATEGY` |
+| `limit` | integer | Default 10; at most `MEMQUIRA_SEARCH_MAX_LIMIT` |
+| `retrieval_mode` | string | `hybrid`, `semantic`, `fulltext` or `rrf`; default from `MEMQUIRA_SEARCH_STRATEGY` |
 | `filters` | object | e.g. memory types, time range |
 | `include_history` | boolean | Also return superseded and invalidated facts |
 | `user_names` | array | Names the user goes by (kept out of full-text terms) |
@@ -122,7 +122,7 @@ Scope: `UserDelete`. Deletes all of the user's facts, vectors and episodes in th
 ### `POST /api/v1/memories/context` — prompt context
 
 Retrieves the user's facts (and episodes, when enabled) and packs them, in rank order, into a token budget. Scope:
-`MemoryRead`. Requires `MEMCORE_SEARCH_MAX_LIMIT` of at least 100; without episodes the context holds facts only.
+`MemoryRead`. Requires `MEMQUIRA_SEARCH_MAX_LIMIT` of at least 100; without episodes the context holds facts only.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -148,7 +148,7 @@ and a `budget` breakdown. Scope: `MemoryRead`.
 - `POST /api/v1/episodes/search` — semantic search over stored source messages (needs episodes on). Scope:
   `MemoryRead`.
 - `GET /api/v1/users/{user_id}/entities`, `GET /api/v1/users/{user_id}/entities/{entity_id}` — the experimental
-  entity layer (`MEMCORE_ENTITIES_ENABLED`, off by default; `400` when off).
+  entity layer (`MEMQUIRA_ENTITIES_ENABLED`, off by default; `400` when off).
 
 ## Export, import and retention
 
@@ -202,7 +202,7 @@ These need no API key.
 | `GET /health/ready` | Readiness: database state, Qdrant and provider checks |
 | `GET /ready` | Readiness with backend labels and the quality tier |
 | `GET /api/v1/version` | Version and build metadata |
-| `GET /metrics` | Prometheus metrics when `MEMCORE_METRICS_ENABLED=true` (an API key is required unless `MEMCORE_METRICS_REQUIRE_AUTH=false`) |
+| `GET /metrics` | Prometheus metrics when `MEMQUIRA_METRICS_ENABLED=true` (an API key is required unless `MEMQUIRA_METRICS_REQUIRE_AUTH=false`) |
 | `GET /openapi.json`, `GET /docs` | OpenAPI document and Swagger UI |
 
 ## Error codes
@@ -215,7 +215,7 @@ These need no API key.
 | `NOT_FOUND` | 404 | Unknown resource, or one that belongs to another user |
 | `CONFLICT`, `MESSAGE_ID_CONFLICT` | 409 | Conflicting state; a `message_id` already names a different message |
 | `IMPORT_ALREADY_APPLIED`, `IMPORT_ID_CONFLICT` | 409 | Append import would duplicate or collide with stored facts; nothing was imported |
-| `PAYLOAD_TOO_LARGE` | 413 | Body over `MEMCORE_MAX_REQUEST_BODY_BYTES` |
+| `PAYLOAD_TOO_LARGE` | 413 | Body over `MEMQUIRA_MAX_REQUEST_BODY_BYTES` |
 | `RATE_LIMITED`, `QUOTA_EXCEEDED` | 429 | Per-organization rate limit or quota |
 | `PROVIDER_GUARDRAIL_VIOLATION` | 403 | A provider guardrail refused the call (input size, output tokens, calls per process) |
 | `PROVIDER_ERROR`, `PROVIDER_OUTPUT_INVALID`, `PROVIDER_OUTPUT_TRUNCATED` | 502 | The provider failed or its output could not be used |

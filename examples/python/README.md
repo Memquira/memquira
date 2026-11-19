@@ -12,10 +12,10 @@ pip install -r examples/python/requirements.txt
 ```
 
 ```bash
-export MEMCORE_BASE_URL="http://localhost:8080"
-export MEMCORE_API_KEY="REPLACE_WITH_API_KEY"
-export MEMCORE_ORG_ID="org_demo"
-export MEMCORE_USER_ID="user_demo"
+export MEMQUIRA_BASE_URL="http://localhost:8080"
+export MEMQUIRA_API_KEY="REPLACE_WITH_API_KEY"
+export MEMQUIRA_ORG_ID="org_demo"
+export MEMQUIRA_USER_ID="user_demo"
 ```
 
 ## Run
@@ -26,6 +26,6 @@ python examples/python/full_flow.py
 
 ## Safety
 
-- Do not log `MEMCORE_API_KEY`.
+- Do not log `MEMQUIRA_API_KEY`.
 - Synthetic memory text only.
 - Timeouts are enabled on every request.

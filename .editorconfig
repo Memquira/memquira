@@ -17,7 +17,7 @@ trim_trailing_whitespace = false
 [Makefile]
 indent_style = tab
 
-[crates/memcore-api/assets/swagger-ui/**]
+[crates/memquira-api/assets/swagger-ui/**]
 charset = unset
 end_of_line = unset
 insert_final_newline = unset

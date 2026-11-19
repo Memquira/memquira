@@ -3,12 +3,16 @@
 #
 # Database auth has no unauthenticated key endpoint: POST /api/v1/api-keys itself needs an admin key.
 # This script inserts one admin key directly into PostgreSQL, hashed exactly as the server hashes keys
-# (hex HMAC-SHA256 of the raw key, keyed with MEMCORE_API_KEY_PEPPER). Use it only to mint scoped keys
+# (hex HMAC-SHA256 of the raw key, keyed with MEMQUIRA_API_KEY_PEPPER). Use it only to mint scoped keys
 # through the API (docs/deployment.md), then revoke it or keep it offline.
 #
 # usage (from the repository root, stack running):  ./scripts/ops/bootstrap_admin_key.sh <org_id> [key_name]
 # The raw key is printed once on stdout. Requires: bash, openssl, docker compose.
 set -euo pipefail
+# Pre-0.3 names: an exported MEMCORE_X is used when MEMQUIRA_X is unset.
+for _legacy in $(compgen -e | grep '^MEMCORE_' || true); do
+  _current="MEMQUIRA_${_legacy#MEMCORE_}"; [[ -n "${!_current+x}" ]] || export "$_current=${!_legacy}"
+done
 
 ORG=${1:?usage: bootstrap_admin_key.sh <org_id> [key_name]}
 NAME=${2:-bootstrap-admin}
@@ -24,9 +28,11 @@ export MEMQUIRA_ENV_FILE=$ENV_FILE
 [[ $ORG =~ ^[A-Za-z0-9_.-]{1,128}$ ]] || { echo "org_id must match [A-Za-z0-9_.-]{1,128}" >&2; exit 2; }
 [[ $NAME =~ ^[A-Za-z0-9_.\ -]{1,128}$ ]] || { echo "key_name must match [A-Za-z0-9_. -]{1,128}" >&2; exit 2; }
 
-PEPPER=$(grep -E '^MEMCORE_API_KEY_PEPPER=' "$ENV_FILE" | head -1 | cut -d= -f2-)
+PEPPER=$(grep -E '^MEMQUIRA_API_KEY_PEPPER=' "$ENV_FILE" | head -1 | cut -d= -f2-)
+# Pre-0.3 env files name it MEMCORE_API_KEY_PEPPER.
+[[ -n $PEPPER ]] || PEPPER=$(grep -E '^MEMCORE_API_KEY_PEPPER=' "$ENV_FILE" | head -1 | cut -d= -f2- || true)
 if [[ -z $PEPPER || $PEPPER == CHANGE_ME* ]]; then
-  echo "set MEMCORE_API_KEY_PEPPER in $ENV_FILE first" >&2
+  echo "set MEMQUIRA_API_KEY_PEPPER in $ENV_FILE first" >&2
   exit 2
 fi
 

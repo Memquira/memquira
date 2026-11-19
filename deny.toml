@@ -1,4 +1,4 @@
-# cargo-deny policy for memcore.
+# cargo-deny policy for memquira.
 # Supply-chain policy checked in CI (`cargo deny check`): advisories, licences, bans and sources.
 
 [graph]

@@ -7,12 +7,12 @@ require_common_env
 
 QUERY="${1:-How should replies be written?}"
 
-curl -sS -X POST "${MEMCORE_BASE_URL}/api/v1/context" \
-  -H "Authorization: Bearer ${MEMCORE_API_KEY}" \
-  -H "X-Organization-ID: ${MEMCORE_ORG_ID}" \
+curl -sS -X POST "${MEMQUIRA_BASE_URL}/api/v1/context" \
+  -H "Authorization: Bearer ${MEMQUIRA_API_KEY}" \
+  -H "X-Organization-ID: ${MEMQUIRA_ORG_ID}" \
   -H "Content-Type: application/json" \
   -d "{
-    \"user_id\": \"${MEMCORE_USER_ID}\",
+    \"user_id\": \"${MEMQUIRA_USER_ID}\",
     \"query\": \"${QUERY}\",
     \"max_tokens\": 1000
   }"

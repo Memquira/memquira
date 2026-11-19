@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared helpers for memcore curl examples. Sourced by other scripts.
+# Shared helpers for memquira curl examples. Sourced by other scripts.
 # Does not print API keys or bearer tokens.
 
 set -euo pipefail
@@ -13,10 +13,10 @@ require_env() {
 }
 
 require_common_env() {
-  require_env MEMCORE_BASE_URL
-  require_env MEMCORE_API_KEY
-  require_env MEMCORE_ORG_ID
-  MEMCORE_USER_ID="${MEMCORE_USER_ID:-user_demo}"
+  require_env MEMQUIRA_BASE_URL
+  require_env MEMQUIRA_API_KEY
+  require_env MEMQUIRA_ORG_ID
+  MEMQUIRA_USER_ID="${MEMQUIRA_USER_ID:-user_demo}"
 }
 
 # A random id for a new session or message (no external tools needed).
@@ -27,6 +27,6 @@ new_id() {
 auth_headers() {
   # Intentionally expand into curl -H args without echoing the key.
   printf '%s\n' \
-    "Authorization: Bearer ${MEMCORE_API_KEY}" \
-    "X-Organization-ID: ${MEMCORE_ORG_ID}"
+    "Authorization: Bearer ${MEMQUIRA_API_KEY}" \
+    "X-Organization-ID: ${MEMQUIRA_ORG_ID}"
 }

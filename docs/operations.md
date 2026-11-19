@@ -15,8 +15,8 @@ the same time:
 ```bash
 mkdir -p backup
 $C exec -T postgres pg_dump -U memcore -d memcore -Fc > backup/memcore-$(date +%F).dump
-$C exec -T memcore curl -s -X POST http://qdrant:6333/collections/memcore_vectors/snapshots
-$C exec -T memcore curl -s -X POST http://qdrant:6333/collections/memcore_vectors_episodes/snapshots
+$C exec -T memquira curl -s -X POST http://qdrant:6333/collections/memcore_vectors/snapshots
+$C exec -T memquira curl -s -X POST http://qdrant:6333/collections/memcore_vectors_episodes/snapshots
 $C cp qdrant:/qdrant/snapshots backup/qdrant-snapshots-$(date +%F)
 ```
 
@@ -26,21 +26,21 @@ volume with plain `tar` (its preallocated sparse files expand to gigabytes); use
 ### Restore
 
 ```bash
-$C stop memcore
+$C stop memquira
 $C exec -T postgres psql -U memcore -d postgres \
-  -c "DROP DATABASE memcore WITH (FORCE)" -c "CREATE DATABASE memcore OWNER memcore"
+  -c "DROP DATABASE memquira WITH (FORCE)" -c "CREATE DATABASE memquira OWNER memquira"
 $C exec -T postgres pg_restore -U memcore -d memcore --no-owner < backup/memcore-YYYY-MM-DD.dump
 # Vectors: restore each collection from its snapshot (Qdrant API:
 # POST /collections/<name>/snapshots/upload with the .snapshot file), then:
-$C start memcore
+$C start memquira
 ```
 
 Check a restored user's vectors against PostgreSQL, and repair them if needed (a repair re-embeds, which costs
 provider calls):
 
 ```bash
-$C exec memcore memcore-maintenance verify-vectors --org-id my-org --user-id <user>
-$C exec memcore memcore-maintenance verify-vectors --org-id my-org --user-id <user> \
+$C exec memquira memquira-maintenance verify-vectors --org-id my-org --user-id <user>
+$C exec memquira memquira-maintenance verify-vectors --org-id my-org --user-id <user> \
   --repair --confirm verify-vectors:my-org:<user>
 ```
 
@@ -94,9 +94,9 @@ exports are capped by fixed fact and event limits unless the opt-in complete exp
 
 ## Migrations and upgrades
 
-The server applies its schema migrations at startup (`MEMCORE_DATABASE_MIGRATION_MODE=auto`;
+The server applies its schema migrations at startup (`MEMQUIRA_DATABASE_MIGRATION_MODE=auto`;
 `validate_only` checks without applying). Applied migrations are checksummed; a database whose history differs from
-the binary's is refused while `MEMCORE_DATABASE_REQUIRE_CLEAN_MIGRATIONS=true`.
+the binary's is refused while `MEMQUIRA_DATABASE_REQUIRE_CLEAN_MIGRATIONS=true`.
 
 Upgrade procedure:
 
@@ -107,12 +107,12 @@ Upgrade procedure:
 An older binary refuses to start on a newer schema. **Rolling back across a migration means restoring the
 pre-upgrade backup**; data written after the backup is lost. There are no down-migrations.
 
-`memcore-maintenance rollout-preflight --assessment first-c-plus-rollout|later-c-plus-upgrade` reports, read-only,
+`memquira-maintenance rollout-preflight --assessment first-c-plus-rollout|later-c-plus-upgrade` reports, read-only,
 whether a store is ready for an upgrade that changes vector write handling.
 
 ## Maintenance CLI
 
-`memcore-maintenance` ships in the image. Every command prints a JSON result; destructive commands need an exact
+`memquira-maintenance` ships in the image. Every command prints a JSON result; destructive commands need an exact
 `--confirm` value.
 
 | Command | Purpose |
@@ -121,22 +121,22 @@ whether a store is ready for an upgrade that changes vector write handling.
 | `verify-vectors --org-id <org> --user-id <user> [--repair --confirm verify-vectors:<org>:<user>]` | Compare a user's vectors with PostgreSQL; repair missing or stale points |
 | `rollout-preflight --assessment …` | Read-only upgrade readiness check |
 
-`MEMCORE_PROTECTED_COLLECTIONS` lists extra Qdrant collections the CLI must never modify.
+`MEMQUIRA_PROTECTED_COLLECTIONS` lists extra Qdrant collections the CLI must never modify.
 
 ## Retention
 
-With `MEMCORE_RETENTION_ENABLED=true`, `POST /api/v1/users/{user_id}/retention/apply` (dry run by default) removes
-expired facts and audit events of one user. In-process background jobs (`MEMCORE_BACKGROUND_JOBS_ENABLED`) can run
-retention and usage snapshots on a schedule for the organizations in `MEMCORE_BACKGROUND_JOB_ORG_IDS`.
+With `MEMQUIRA_RETENTION_ENABLED=true`, `POST /api/v1/users/{user_id}/retention/apply` (dry run by default) removes
+expired facts and audit events of one user. In-process background jobs (`MEMQUIRA_BACKGROUND_JOBS_ENABLED`) can run
+retention and usage snapshots on a schedule for the organizations in `MEMQUIRA_BACKGROUND_JOB_ORG_IDS`.
 
 ## Monitoring
 
 - **Probes:** `GET /health/live` for liveness, `GET /health/ready` for readiness (the Compose healthcheck).
-- **Metrics:** `GET /metrics` in Prometheus format when `MEMCORE_METRICS_ENABLED=true`, authenticated by default.
+- **Metrics:** `GET /metrics` in Prometheus format when `MEMQUIRA_METRICS_ENABLED=true`, authenticated by default.
   Useful series: request rate and latency by route, admission rejections, provider calls and errors by bounded
   labels, provider token counts, and ingest outcomes (stored, discarded, skipped).
-- **Logs:** JSON lines (`MEMCORE_LOG_FORMAT=json`) with a `request_id` per request. Message content is not logged.
-- **Provider usage:** with `MEMCORE_PROVIDER_USAGE_PERSISTENCE_ENABLED=true`,
+- **Logs:** JSON lines (`MEMQUIRA_LOG_FORMAT=json`) with a `request_id` per request. Message content is not logged.
+- **Provider usage:** with `MEMQUIRA_PROVIDER_USAGE_PERSISTENCE_ENABLED=true`,
   `GET /api/v1/admin/org/provider-usage` reports calls and tokens per organization.
 - **Disk:** PostgreSQL and Qdrant volumes grow with stored memories; keep Qdrant on a Docker named volume or a Linux
   filesystem.

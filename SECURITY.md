@@ -18,10 +18,10 @@ latest release receives security fixes.
 
 ## Scope
 
-In scope: the `memcore-api` server, `memcore-maintenance`, the engine, storage and provider crates, the Docker
+In scope: the `memquira-api` server, `memquira-maintenance`, the engine, storage and provider crates, the Docker
 image and the Compose files in this repository.
 
 Out of scope: vulnerabilities in third-party model providers or databases, issues in your own gateway or proxy, and
-deployments running `MEMCORE_AUTH_MODE=dev` (a single shared key intended for local development only).
+deployments running `MEMQUIRA_AUTH_MODE=dev` (a single shared key intended for local development only).
 
 Hardening guidance for operators: [docs/security.md](docs/security.md).

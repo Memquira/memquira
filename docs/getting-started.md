@@ -111,7 +111,7 @@ OpenAI-compatible provider:
 
 ```bash
 cp .env.production.example .env.production
-# set POSTGRES_PASSWORD, MEMCORE_API_KEY_PEPPER (openssl rand -hex 32) and your provider keys
+# set POSTGRES_PASSWORD, MEMQUIRA_API_KEY_PEPPER (openssl rand -hex 32) and your provider keys
 chmod 600 .env.production
 docker compose --env-file .env.production -f docker/docker-compose.prod.yml up -d --build
 curl -s http://127.0.0.1:8080/health/ready
@@ -137,9 +137,9 @@ Hugging Face TEI ([providers.md](providers.md)).
 ## Without Docker
 
 ```bash
-cp .env.example .env            # set MEMCORE_DEV_API_KEY to any local value
+cp .env.example .env            # set MEMQUIRA_DEV_API_KEY to any local value
 mkdir -p data                   # the SQLite database is created here
-cargo run -p memcore-api        # reads .env from the working directory
+cargo run -p memquira-api        # reads .env from the working directory
 ```
 
 The default build has SQLite and the mock providers; add `--features postgres,qdrant` for the production backends

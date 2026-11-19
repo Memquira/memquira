@@ -1,4 +1,4 @@
-# cargo-audit configuration for memcore.
+# cargo-audit configuration for memquira.
 # Keep in sync with deny.toml [advisories].
 
 [advisories]

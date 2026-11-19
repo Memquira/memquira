@@ -9,10 +9,10 @@ Shell scripts for common Memquira flows. No API key is printed.
 ## Environment
 
 ```bash
-export MEMCORE_BASE_URL="http://localhost:8080"
-export MEMCORE_API_KEY="REPLACE_WITH_API_KEY"
-export MEMCORE_ORG_ID="org_demo"
-export MEMCORE_USER_ID="user_demo"   # optional; defaults to user_demo
+export MEMQUIRA_BASE_URL="http://localhost:8080"
+export MEMQUIRA_API_KEY="REPLACE_WITH_API_KEY"
+export MEMQUIRA_ORG_ID="org_demo"
+export MEMQUIRA_USER_ID="user_demo"   # optional; defaults to user_demo
 ```
 
 ## Scripts
@@ -34,4 +34,4 @@ chmod +x examples/curl/*.sh
 
 - Scripts exit if required env vars are missing.
 - Synthetic content only.
-- Do not `echo` `$MEMCORE_API_KEY`.
+- Do not `echo` `$MEMQUIRA_API_KEY`.

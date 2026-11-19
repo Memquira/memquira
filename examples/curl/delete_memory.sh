@@ -7,7 +7,7 @@ require_common_env
 require_env MEMORY_ID
 
 curl -sS -X DELETE \
-  "${MEMCORE_BASE_URL}/api/v1/users/${MEMCORE_USER_ID}/memories/${MEMORY_ID}" \
-  -H "Authorization: Bearer ${MEMCORE_API_KEY}" \
-  -H "X-Organization-ID: ${MEMCORE_ORG_ID}"
+  "${MEMQUIRA_BASE_URL}/api/v1/users/${MEMQUIRA_USER_ID}/memories/${MEMORY_ID}" \
+  -H "Authorization: Bearer ${MEMQUIRA_API_KEY}" \
+  -H "X-Organization-ID: ${MEMQUIRA_ORG_ID}"
 echo

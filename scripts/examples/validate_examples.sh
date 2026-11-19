@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Validate example clients/scripts without a live memcore server.
+# Validate example clients/scripts without a live memquira server.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -32,7 +32,7 @@ else
 fi
 
 if [[ -n "${PY}" ]]; then
-  if ! "${PY}" -m py_compile examples/python/memcore_client.py examples/python/full_flow.py; then
+  if ! "${PY}" -m py_compile examples/python/memquira_client.py examples/python/full_flow.py; then
     echo "FAIL: python syntax" >&2
     fail=1
   fi
@@ -42,8 +42,8 @@ fi
 
 echo "==> node syntax"
 if command -v node >/dev/null 2>&1; then
-  if ! node --check examples/node/memcore-client.js; then
-    echo "FAIL: node --check memcore-client.js" >&2
+  if ! node --check examples/node/memquira-client.js; then
+    echo "FAIL: node --check memquira-client.js" >&2
     fail=1
   fi
   if ! node --check examples/node/full-flow.js; then
@@ -63,8 +63,8 @@ if command -v rg >/dev/null 2>&1; then
     -e 'sk_test_[A-Za-z0-9]+' \
     -e 'postgres://[^[:space:]]+:[^[:space:]]+@' \
     -e 'redis://[^[:space:]]+:[^[:space:]]+@' \
-    -e 'Bearer memcore_[A-Za-z0-9_]+' \
-    -e 'echo .*MEMCORE_API_KEY' \
+    -e 'Bearer memquira_[A-Za-z0-9_]+' \
+    -e 'echo .*MEMQUIRA_API_KEY' \
     -e 'console\.log\(.*apiKey' \
     -e 'print\(.*api_key' \
     examples 2>/dev/null; then
@@ -79,8 +79,8 @@ patterns = [
     re.compile(r"sk_test_[A-Za-z0-9]+"),
     re.compile(r"postgres://[^\s:]+:[^\s]+@"),
     re.compile(r"redis://[^\s:]+:[^\s]+@"),
-    re.compile(r"Bearer memcore_[A-Za-z0-9_]+"),
-    re.compile(r"echo .*MEMCORE_API_KEY"),
+    re.compile(r"Bearer memquira_[A-Za-z0-9_]+"),
+    re.compile(r"echo .*MEMQUIRA_API_KEY"),
     re.compile(r"console\.log\(.*apiKey"),
     re.compile(r"print\(.*api_key"),
 ]

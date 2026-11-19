@@ -9,7 +9,7 @@ applications, use the client in [clients/python](../clients/python/) instead of 
 | `python/` | Python 3 + requests | Example client class |
 | `node/` | Node 18+ fetch | Example client class |
 
-Every example reads `MEMCORE_BASE_URL`, `MEMCORE_API_KEY` and `MEMCORE_ORG_ID` (for the local stack:
+Every example reads `MEMQUIRA_BASE_URL`, `MEMQUIRA_API_KEY` and `MEMQUIRA_ORG_ID` (for the local stack:
 `http://127.0.0.1:8080`, `memcore_dev_key`, any organization id). API details: [docs/api-reference.md](../docs/api-reference.md).
 
 ## Message ids and retries

@@ -1,8 +1,8 @@
 {
-  "name": "memcore-node-examples",
+  "name": "memquira-node-examples",
   "version": "0.1.0",
   "private": true,
-  "description": "Example memcore HTTP client (not published)",
+  "description": "Example memquira HTTP client (not published)",
   "type": "module",
   "engines": {
     "node": ">=18"

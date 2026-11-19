@@ -2076,7 +2076,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6b947ae49db0d222b1dbc6b113ce7248a3fc3a6ca21b696717bfc000ba4484d8"
 
 [[package]]
-name = "memcore-api"
+name = "memquira-api"
 version = "0.2.0"
 dependencies = [
  "async-trait",
@@ -2084,11 +2084,11 @@ dependencies = [
  "chrono",
  "hex",
  "http-body-util",
- "memcore-common",
- "memcore-config",
- "memcore-core",
- "memcore-providers",
- "memcore-storage",
+ "memquira-common",
+ "memquira-config",
+ "memquira-core",
+ "memquira-providers",
+ "memquira-storage",
  "metrics",
  "metrics-exporter-prometheus",
  "qdrant-client",
@@ -2109,7 +2109,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "memcore-common"
+name = "memquira-common"
 version = "0.2.0"
 dependencies = [
  "hex",
@@ -2120,16 +2120,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "memcore-config"
+name = "memquira-config"
 version = "0.2.0"
 dependencies = [
  "dotenvy",
- "memcore-common",
+ "memquira-common",
  "url",
 ]
 
 [[package]]
-name = "memcore-core"
+name = "memquira-core"
 version = "0.2.0"
 dependencies = [
  "async-trait",
@@ -2137,9 +2137,9 @@ dependencies = [
  "chrono",
  "futures",
  "hex",
- "memcore-common",
- "memcore-providers",
- "memcore-storage",
+ "memquira-common",
+ "memquira-providers",
+ "memquira-storage",
  "metrics",
  "regex",
  "serde",
@@ -2154,7 +2154,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "memcore-providers"
+name = "memquira-providers"
 version = "0.2.0"
 dependencies = [
  "async-trait",
@@ -2163,9 +2163,9 @@ dependencies = [
  "chrono",
  "hex",
  "httpdate",
- "memcore-common",
- "memcore-core",
- "memcore-storage",
+ "memquira-common",
+ "memquira-core",
+ "memquira-storage",
  "ort",
  "reqwest",
  "serde",
@@ -2179,14 +2179,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "memcore-storage"
+name = "memquira-storage"
 version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
  "hex",
- "memcore-common",
- "memcore-core",
+ "memquira-common",
+ "memquira-core",
  "qdrant-client",
  "redis",
  "serde",

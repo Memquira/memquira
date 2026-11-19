@@ -18,25 +18,25 @@ vulnerability, see [SECURITY.md](../SECURITY.md).
 
 | Mode | Use |
 |---|---|
-| `database` | Production. Keys `mc_live_…` are stored only as HMAC-SHA256 hashes keyed with `MEMCORE_API_KEY_PEPPER`, belong to one organization and carry scopes. The raw key is shown once at creation |
-| `dev` | Local development only: one shared plaintext key (`MEMCORE_DEV_API_KEY`) for every organization, no scope checks |
+| `database` | Production. Keys `mc_live_…` are stored only as HMAC-SHA256 hashes keyed with `MEMQUIRA_API_KEY_PEPPER`, belong to one organization and carry scopes. The raw key is shown once at creation |
+| `dev` | Local development only: one shared plaintext key (`MEMQUIRA_DEV_API_KEY`) for every organization, no scope checks |
 
 Give each application the smallest set of scopes it needs, rotate keys by creating a new one and revoking the old,
 and keep the pepper stable (changing it invalidates every key).
 
 ## Request protection
 
-- **Rate limits** per organization (`MEMCORE_RATE_LIMIT_*`) and **admission control** per request class, with
-  deadlines (`MEMCORE_ADMISSION_*`).
-- **Body size limit** (`MEMCORE_MAX_REQUEST_BODY_BYTES`, 1 MiB by default) and JSON content-type validation.
-- **Security headers** (`MEMCORE_SECURITY_HEADERS_ENABLED`): `X-Content-Type-Options`, `X-Frame-Options`,
+- **Rate limits** per organization (`MEMQUIRA_RATE_LIMIT_*`) and **admission control** per request class, with
+  deadlines (`MEMQUIRA_ADMISSION_*`).
+- **Body size limit** (`MEMQUIRA_MAX_REQUEST_BODY_BYTES`, 1 MiB by default) and JSON content-type validation.
+- **Security headers** (`MEMQUIRA_SECURITY_HEADERS_ENABLED`): `X-Content-Type-Options`, `X-Frame-Options`,
   `Referrer-Policy`, `Permissions-Policy` and `Cache-Control: no-store`. HSTS is opt-in; set it on the TLS proxy.
 - **CORS** is off by default. Keep it off: browsers should not call the API.
 - **Request ids** are accepted only when short and safe, and are used for correlation, never for authentication.
 
 ## Data handling
 
-- **PII redaction** (`MEMCORE_ENABLE_PII_REDACTION`, on by default) replaces e-mail addresses, phone numbers and card numbers
+- **PII redaction** (`MEMQUIRA_ENABLE_PII_REDACTION`, on by default) replaces e-mail addresses, phone numbers and card numbers
   in message content before extraction and storage. It is pattern-based, not a
   complete data-loss-prevention system.
 - **Logs** do not contain message content, keys, connection strings or raw provider payloads. They do contain
@@ -52,16 +52,16 @@ and keep the pepper stable (changing it invalidates every key).
 - Terminate TLS in front of the API and expose it only to your backend.
 - Keep PostgreSQL and Qdrant on a private network (the production Compose stack uses an internal network with no
   published ports). Qdrant has no authentication in that stack.
-- Keep `/metrics` private or authenticated (`MEMCORE_METRICS_REQUIRE_AUTH=true`, the default; database mode also
+- Keep `/metrics` private or authenticated (`MEMQUIRA_METRICS_REQUIRE_AUTH=true`, the default; database mode also
   requires an admin scope to scrape).
-- Run with `MEMCORE_ENV=production`, `MEMCORE_ALLOW_MOCK=false` and the context cache disabled.
+- Run with `MEMQUIRA_ENV=production`, `MEMQUIRA_ALLOW_MOCK=false` and the context cache disabled.
 - Keep secrets in `.env.production` (mode 600) or a secret manager; never in git, images or logs.
 - Set a spending limit with your model provider: Memquira bounds calls per process but does not enforce a monetary
   budget.
 - Back up, encrypt the backups and test restores ([operations.md](operations.md)).
 
-The container image runs as the non-root user `memcore` (uid 10001), contains only the two binaries, CA
-certificates and `curl` for the healthcheck, and ships its licence notices under `/usr/share/doc/memcore`.
+The container image runs as the non-root user `memquira` (uid 10001), contains only the two binaries, CA
+certificates and `curl` for the healthcheck, and ships its licence notices under `/usr/share/doc/memquira`.
 
 ## Supply chain
 
@@ -80,12 +80,12 @@ An exception records a risk the project accepts; it is not a fix. Each exception
     with a crafted sibling `-wal` file whose page size differs.
   - **Why there is no upgrade yet:** sqlx 0.8 requires `libsqlite3-sys` 0.30, and the fixed 0.39 release needs
     sqlx 0.9, which requires a newer Rust toolchain than this project's 1.89.
-  - **Trust model the acceptance relies on:** Memquira opens only the database configured in `MEMCORE_DATABASE_URL`, a file it
+  - **Trust model the acceptance relies on:** Memquira opens only the database configured in `MEMQUIRA_DATABASE_URL`, a file it
     creates and writes itself. Clients cannot supply database files (import accepts JSON only), and no server or
-    `memcore-maintenance` command opens another SQLite file.
+    `memquira-maintenance` command opens another SQLite file.
   - **Residual exposure:** someone who can write to Memquira's data directory could plant such a file pair, but
     that access already exposes all stored data. Keep the data directory writable only by the Memquira user. Never
-    point `MEMCORE_DATABASE_URL` at a database or `-wal` file from an untrusted source. Use PostgreSQL in
+    point `MEMQUIRA_DATABASE_URL` at a database or `-wal` file from an untrusted source. Use PostgreSQL in
     production.
   - **Removal:** when the project moves to an sqlx release that uses `libsqlite3-sys` 0.39 or later, or sooner if a
     feature starts opening SQLite files that a less-trusted party could supply.
