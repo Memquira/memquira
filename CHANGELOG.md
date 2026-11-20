@@ -5,6 +5,8 @@ All notable changes to this project are documented in this file. The project fol
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-20
+
 ### Changed
 
 - **Renamed from Memcore to Memquira.** Configuration variables use the `MEMQUIRA_` prefix, the Cargo packages

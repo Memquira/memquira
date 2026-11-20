@@ -36,7 +36,8 @@ async fn fresh_db(test: &str) -> Option<(PgPool, PgPool, String)> {
 
 async fn drop_db(admin: PgPool, pool: PgPool, name: String) {
     pool.close().await;
-    sqlx::query(&format!("DROP DATABASE IF EXISTS {name}"))
+    // FORCE: a connection the pool closed in the background can still hold its session here.
+    sqlx::query(&format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)"))
         .execute(&admin)
         .await
         .expect("drop database");

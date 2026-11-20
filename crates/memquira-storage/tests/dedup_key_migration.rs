@@ -201,7 +201,8 @@ async fn ar086_migration_0015_applies_to_an_existing_postgres_database_with_dupl
     assert!(runner.apply_pending_migrations(&all).await.unwrap().clean);
 
     pool.close().await;
-    sqlx::query(&format!("DROP DATABASE {name}"))
+    // FORCE: a connection the pool closed in the background can still hold its session here.
+    sqlx::query(&format!("DROP DATABASE {name} WITH (FORCE)"))
         .execute(&admin)
         .await
         .unwrap();
