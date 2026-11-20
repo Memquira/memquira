@@ -34,7 +34,7 @@ body:
     id: version
     attributes:
       label: Memquira version
-      placeholder: "0.2.0"
+      placeholder: "0.3.0"
   - type: checkboxes
     id: checks
     attributes:

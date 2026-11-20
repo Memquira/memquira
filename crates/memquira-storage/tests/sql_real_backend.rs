@@ -114,7 +114,8 @@ async fn fresh_pg(test: &str) -> Option<Pg> {
 
 async fn drop_pg(pg: Pg) {
     pg.facts.pool().close().await;
-    sqlx::query(&format!("DROP DATABASE IF EXISTS {}", pg.name))
+    // FORCE: a connection the pool closed in the background can still hold its session here.
+    sqlx::query(&format!("DROP DATABASE IF EXISTS {} WITH (FORCE)", pg.name))
         .execute(&pg.admin)
         .await
         .expect("drop database");

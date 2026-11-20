@@ -10,7 +10,7 @@ information arrives (updates, contradictions, deletions), and retrieves them acr
 It runs as one Rust binary next to PostgreSQL and Qdrant (or SQLite for local development), talks to any
 OpenAI-compatible LLM and embedding endpoint, and enforces tenant isolation on the server.
 
-> **Status: 0.2.0, early release.** APIs, configuration and storage formats may change before 1.0. The project
+> **Status: 0.3.0, early release.** APIs, configuration and storage formats may change before 1.0. The project
 > has not been audited by a third party. Do not store regulated or highly sensitive data in it yet.
 
 ## Why Memquira
