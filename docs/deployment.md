@@ -26,9 +26,9 @@ chmod 600 .env.production
 
 Edit `.env.production`:
 
-- `POSTGRES_PASSWORD` and `MEMCORE_API_KEY_PEPPER`: long random values (`openssl rand -hex 32`). Keep the pepper
+- `POSTGRES_PASSWORD` and `MEMQUIRA_API_KEY_PEPPER`: long random values (`openssl rand -hex 32`). Keep the pepper
   stable: changing it invalidates every API key. Use URL-safe characters in the password.
-- `MEMCORE_LLM_*` and `MEMCORE_EMBEDDING_*`: your provider ([providers.md](providers.md)).
+- `MEMQUIRA_LLM_*` and `MEMQUIRA_EMBEDDING_*`: your provider ([providers.md](providers.md)).
 - Review quotas, rate limits and resource limits.
 
 ## 2. Start
@@ -78,7 +78,7 @@ memory.example.com {
 }
 ```
 
-Keep `/metrics` private or authenticated (`MEMCORE_METRICS_REQUIRE_AUTH=true`, the default).
+Keep `/metrics` private or authenticated (`MEMQUIRA_METRICS_REQUIRE_AUTH=true`, the default).
 
 ## 5. Verify
 
@@ -96,9 +96,9 @@ curl -s -X DELETE https://memory.example.com/api/v1/users/smoke-user \
 
 ## Production checklist
 
-- [ ] `MEMCORE_ENV=production`, `MEMCORE_AUTH_MODE=database`, `MEMCORE_ALLOW_MOCK=false`.
+- [ ] `MEMQUIRA_ENV=production`, `MEMQUIRA_AUTH_MODE=database`, `MEMQUIRA_ALLOW_MOCK=false`.
 - [ ] Secrets only in `.env.production` (mode 600) or a secret manager; nothing in git or the image.
-- [ ] `MEMCORE_PROVIDER_MAX_CALLS_PER_RUN` raised from its test default of 10.
+- [ ] `MEMQUIRA_PROVIDER_MAX_CALLS_PER_RUN` raised from its test default of 10.
 - [ ] A spending limit set with the model provider.
 - [ ] API reachable only through TLS, only from your backend; PostgreSQL, Qdrant and `/metrics` private.
 - [ ] Rate limits, admission control and quotas sized for your traffic.
@@ -111,7 +111,7 @@ curl -s -X DELETE https://memory.example.com/api/v1/users/smoke-user \
 
 The image (`docker/Dockerfile`, built with `--build-arg CARGO_FEATURES=postgres,qdrant`) runs as a non-root user,
 listens on port 8080 and needs only environment variables. On Kubernetes or a container service, provide the same
-variables as `.env.production`, point `MEMCORE_POSTGRES_URL` and `MEMCORE_QDRANT_URL` (gRPC, port 6334) at your
+variables as `.env.production`, point `MEMQUIRA_POSTGRES_URL` and `MEMQUIRA_QDRANT_URL` (gRPC, port 6334) at your
 databases, and use `/health/live` and `/health/ready` as liveness and readiness probes.
 
 ## Stopping and removing

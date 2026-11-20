@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create → search → context → delete using the example MemcoreClient."""
+"""Create → search → context → delete using the example MemquiraClient."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from memcore_client import MemcoreApiError, MemcoreClient, new_message
+from memquira_client import MemquiraApiError, MemquiraClient, new_message
 
 
 def require_env(name: str) -> str:
@@ -22,12 +22,12 @@ def require_env(name: str) -> str:
 
 
 def main() -> int:
-    base_url = require_env("MEMCORE_BASE_URL")
-    api_key = require_env("MEMCORE_API_KEY")
-    org_id = require_env("MEMCORE_ORG_ID")
-    user_id = os.environ.get("MEMCORE_USER_ID", "user_demo").strip() or "user_demo"
+    base_url = require_env("MEMQUIRA_BASE_URL")
+    api_key = require_env("MEMQUIRA_API_KEY")
+    org_id = require_env("MEMQUIRA_ORG_ID")
+    user_id = os.environ.get("MEMQUIRA_USER_ID", "user_demo").strip() or "user_demo"
 
-    client = MemcoreClient(base_url, api_key, org_id)
+    client = MemquiraClient(base_url, api_key, org_id)
 
     # An explicit session, and each message created once with its own stable message_id.
     session_id = f"session_{uuid.uuid4().hex}"
@@ -39,7 +39,7 @@ def main() -> int:
     try:
         try:
             created = client.create_memory(user_id, session_id, messages)
-        except MemcoreApiError as exc:
+        except MemquiraApiError as exc:
             if exc.code != "REQUEST_DEADLINE_EXCEEDED":
                 raise
             # The timed-out request may have been partly stored. Retry once, later, with the SAME
@@ -68,7 +68,7 @@ def main() -> int:
             print(f"delete status={deleted.get('status')}")
         else:
             print("warning: no memory id returned; skipping delete", file=sys.stderr)
-    except MemcoreApiError as exc:
+    except MemquiraApiError as exc:
         print(str(exc), file=sys.stderr)
         return 1
 

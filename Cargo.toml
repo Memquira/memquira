@@ -1,11 +1,11 @@
 [workspace]
 members = [
-    "crates/memcore-api",
-    "crates/memcore-core",
-    "crates/memcore-storage",
-    "crates/memcore-providers",
-    "crates/memcore-config",
-    "crates/memcore-common",
+    "crates/memquira-api",
+    "crates/memquira-core",
+    "crates/memquira-storage",
+    "crates/memquira-providers",
+    "crates/memquira-config",
+    "crates/memquira-common",
 ]
 resolver = "3"
 

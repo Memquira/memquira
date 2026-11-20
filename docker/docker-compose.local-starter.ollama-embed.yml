@@ -6,7 +6,7 @@
 #
 # Embedding model: nomic-embed-text v1.5 (768-d) with its task prefixes. Quality label:
 # compatible-unvalidated, exact-text dedup only. This is a DIFFERENT embedding identity from the TEI
-# profile: start it on fresh volumes (`down -v`, or another project name with `-p`); memcore refuses
+# profile: start it on fresh volumes (`down -v`, or another project name with `-p`); memquira refuses
 # to start on Qdrant stores written by the other profile.
 
 services:
@@ -18,15 +18,15 @@ services:
     environment:
       STARTER_PULL_MODELS: "${STARTER_LLM_MODEL:-qwen2.5:3b-instruct} ${STARTER_OLLAMA_EMBEDDING_MODEL:-nomic-embed-text:v1.5}"
 
-  memcore:
+  memquira:
     environment:
-      MEMCORE_EMBEDDING_MODEL: ${STARTER_OLLAMA_EMBEDDING_MODEL:-nomic-embed-text:v1.5}
-      MEMCORE_EMBEDDING_MODEL_REVISION: ${STARTER_OLLAMA_EMBEDDING_DIGEST:-ollama-library-nomic-embed-text-v1.5}
-      MEMCORE_EMBEDDING_SERVING_VARIANT: ollama-0.6.8
-      MEMCORE_EMBEDDING_BASE_URL: http://ollama:11434/v1
-      MEMCORE_EMBEDDING_DIMENSIONS: 768
-      MEMCORE_EMBEDDING_QUERY_PREFIX: "search_query: "
-      MEMCORE_EMBEDDING_DOCUMENT_PREFIX: "search_document: "
+      MEMQUIRA_EMBEDDING_MODEL: ${STARTER_OLLAMA_EMBEDDING_MODEL:-nomic-embed-text:v1.5}
+      MEMQUIRA_EMBEDDING_MODEL_REVISION: ${STARTER_OLLAMA_EMBEDDING_DIGEST:-ollama-library-nomic-embed-text-v1.5}
+      MEMQUIRA_EMBEDDING_SERVING_VARIANT: ollama-0.6.8
+      MEMQUIRA_EMBEDDING_BASE_URL: http://ollama:11434/v1
+      MEMQUIRA_EMBEDDING_DIMENSIONS: 768
+      MEMQUIRA_EMBEDDING_QUERY_PREFIX: "search_query: "
+      MEMQUIRA_EMBEDDING_DOCUMENT_PREFIX: "search_document: "
     depends_on: !override
       qdrant:
         condition: service_started

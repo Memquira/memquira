@@ -3,10 +3,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-OUT="${1:-${ROOT}/openapi/memcore.openapi.json}"
+OUT="${1:-${ROOT}/openapi/memquira.openapi.json}"
 
 cd "${ROOT}"
-cargo run -q -p memcore-api --bin export_openapi -- "${OUT}"
+cargo run -q -p memquira-api --bin export_openapi -- "${OUT}"
 
 if command -v python >/dev/null 2>&1; then
   python -m json.tool "${OUT}" >/dev/null

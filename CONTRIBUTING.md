@@ -25,7 +25,7 @@ cargo test --workspace
 - Keep each pull request to one change, with a clear description of what and why.
 - Add or update tests for behaviour changes. Tests must not call paid model providers or need private
   credentials; use the mock providers and in-process fakes.
-- Update the documentation and `openapi/memcore.openapi.json` when you change configuration or the API
+- Update the documentation and `openapi/memquira.openapi.json` when you change configuration or the API
   ([docs/development.md](docs/development.md#openapi-document)).
 - Never edit a released database migration; add a new one.
 - Do not commit secrets, real customer data, or third-party datasets without a licence that allows

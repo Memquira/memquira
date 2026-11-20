@@ -44,14 +44,28 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    env:
+      # About 140 test binaries are linked; line tables keep backtraces readable and the target directory within
+      # the runner's disk.
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
+      # The runner image's preinstalled SDKs this job never uses (.NET, Android, GHC, CodeQL): about 25 GB.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Own cache: a fallback restore of another configuration's target directory, next to a full build,
+          # ran the runner out of disk.
+          prefix-key: v1-test-lines
       # SQLite, mocks and in-process fakes only: tests against real PostgreSQL / Qdrant skip without their
-      # MEMCORE_TEST_* variables, and no test calls a model provider.
+      # MEMQUIRA_TEST_* variables, and no test calls a model provider.
       - run: cargo test --workspace
 
   integration:
@@ -69,15 +83,15 @@ jobs:
         image: qdrant/qdrant:v1.18.0
         ports: ["6334:6334"]
     env:
-      MEMCORE_TEST_POSTGRES_URL: postgres://postgres:ci-only-password@127.0.0.1:55432/postgres
-      MEMCORE_TEST_QDRANT_URL: http://127.0.0.1:6334
+      MEMQUIRA_TEST_POSTGRES_URL: postgres://postgres:ci-only-password@127.0.0.1:55432/postgres
+      MEMQUIRA_TEST_QDRANT_URL: http://127.0.0.1:6334
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test -p memcore-storage --features postgres,qdrant -- --test-threads 1
+      - run: cargo test -p memquira-storage --features postgres,qdrant -- --test-threads 1
 
   features:
     name: Feature builds
@@ -88,8 +102,8 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check -p memcore-api --features postgres,qdrant
-      - run: cargo check -p memcore-api --features redis-cache
+      - run: cargo check -p memquira-api --features postgres,qdrant
+      - run: cargo check -p memquira-api --features redis-cache
 
   supply-chain:
     name: Dependencies and licences
@@ -168,42 +182,42 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build -p memcore-api --bin memcore-api
+      - run: cargo build -p memquira-api --bin memquira-api
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
       - run: python -m pip install -e "clients/python[test]"
       # The local development configuration: SQLite, mock vector store and mock models, so no provider is called.
-      - name: Start memcore-api
+      - name: Start memquira-api
         env:
-          MEMCORE_ENV: development
-          MEMCORE_HOST: 127.0.0.1
-          MEMCORE_PORT: "8080"
-          MEMCORE_STORAGE_MODE: embedded
-          MEMCORE_FACT_BACKEND: sqlite
-          MEMCORE_EVENT_BACKEND: sqlite
-          MEMCORE_VECTOR_BACKEND: mock
-          MEMCORE_DATABASE_URL: sqlite://${{ runner.temp }}/memcore.db?mode=rwc
-          MEMCORE_EPISODES_ENABLED: "true"
-          MEMCORE_SEARCH_MAX_LIMIT: "100"
-          MEMCORE_LLM_PROVIDER: mock
-          MEMCORE_LLM_MODEL: mock-llm
-          MEMCORE_EMBEDDING_PROVIDER: mock
-          MEMCORE_EMBEDDING_MODEL: mock-embedding
-          MEMCORE_ALLOW_MOCK: "true"
-          MEMCORE_AUTH_ENABLED: "true"
-          MEMCORE_AUTH_MODE: dev
-          MEMCORE_DEV_API_KEY: memcore_dev_key
-          MEMCORE_RATE_LIMIT_ENABLED: "false"
-          MEMCORE_LOG_FORMAT: json
-          MEMCORE_LOG_LEVEL: warn
+          MEMQUIRA_ENV: development
+          MEMQUIRA_HOST: 127.0.0.1
+          MEMQUIRA_PORT: "8080"
+          MEMQUIRA_STORAGE_MODE: embedded
+          MEMQUIRA_FACT_BACKEND: sqlite
+          MEMQUIRA_EVENT_BACKEND: sqlite
+          MEMQUIRA_VECTOR_BACKEND: mock
+          MEMQUIRA_DATABASE_URL: sqlite://${{ runner.temp }}/memcore.db?mode=rwc
+          MEMQUIRA_EPISODES_ENABLED: "true"
+          MEMQUIRA_SEARCH_MAX_LIMIT: "100"
+          MEMQUIRA_LLM_PROVIDER: mock
+          MEMQUIRA_LLM_MODEL: mock-llm
+          MEMQUIRA_EMBEDDING_PROVIDER: mock
+          MEMQUIRA_EMBEDDING_MODEL: mock-embedding
+          MEMQUIRA_ALLOW_MOCK: "true"
+          MEMQUIRA_AUTH_ENABLED: "true"
+          MEMQUIRA_AUTH_MODE: dev
+          MEMQUIRA_DEV_API_KEY: memcore_dev_key
+          MEMQUIRA_RATE_LIMIT_ENABLED: "false"
+          MEMQUIRA_LOG_FORMAT: json
+          MEMQUIRA_LOG_LEVEL: warn
         run: |
-          nohup target/debug/memcore-api > "${RUNNER_TEMP}/memcore-api.log" 2>&1 &
+          nohup target/debug/memquira-api > "${RUNNER_TEMP}/memquira-api.log" 2>&1 &
           for _ in $(seq 1 60); do
             curl -sf http://127.0.0.1:8080/health/ready > /dev/null && exit 0
             sleep 1
           done
-          cat "${RUNNER_TEMP}/memcore-api.log"
+          cat "${RUNNER_TEMP}/memquira-api.log"
           exit 1
       - name: End-to-end tests
         working-directory: clients/python
@@ -214,4 +228,4 @@ jobs:
         run: pytest -q -rs tests/test_e2e_local.py
       - name: Server log on failure
         if: failure()
-        run: cat "${RUNNER_TEMP}/memcore-api.log"
+        run: cat "${RUNNER_TEMP}/memquira-api.log"

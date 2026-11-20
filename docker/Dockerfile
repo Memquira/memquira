@@ -1,13 +1,13 @@
-# Multi-stage image for the Memquira API server (`memcore-api`; no Qdrant client by default).
+# Multi-stage image for the Memquira API server (`memquira-api`; no Qdrant client by default).
 # Optional features via CARGO_FEATURES build arg (comma-separated):
-#   postgres  — required for MEMCORE_FACT_BACKEND=postgres (production compose)
-#   qdrant    — required for MEMCORE_VECTOR_BACKEND=qdrant (production compose)
+#   postgres  — required for MEMQUIRA_FACT_BACKEND=postgres (production compose)
+#   qdrant    — required for MEMQUIRA_VECTOR_BACKEND=qdrant (production compose)
 # Examples:
-#   docker build -f docker/Dockerfile --build-arg CARGO_FEATURES=postgres -t memcore-api:postgres .
-#   docker build -f docker/Dockerfile --build-arg CARGO_FEATURES="postgres,qdrant" -t memcore-api:prod .
-#   docker build -f docker/Dockerfile --build-arg APP_VERSION=0.2.0 --build-arg GIT_SHA=abc123 -t memcore:0.2.0 .
+#   docker build -f docker/Dockerfile --build-arg CARGO_FEATURES=postgres -t memquira-api:postgres .
+#   docker build -f docker/Dockerfile --build-arg CARGO_FEATURES="postgres,qdrant" -t memquira-api:prod .
+#   docker build -f docker/Dockerfile --build-arg APP_VERSION=0.2.0 --build-arg GIT_SHA=abc123 -t memquira:0.2.0 .
 #
-# Security notes: runtime runs as non-root `memcore`; do not bake secrets into the image.
+# Security notes: runtime runs as non-root `memquira`; do not bake secrets into the image.
 # See docs/security.md.
 
 ARG CARGO_FEATURES=
@@ -27,14 +27,14 @@ ARG APP_VERSION
 ARG GIT_SHA
 ARG BUILD_TIMESTAMP
 
-ENV MEMCORE_BUILD_GIT_SHA=${GIT_SHA}
-ENV MEMCORE_BUILD_TIMESTAMP=${BUILD_TIMESTAMP}
-ENV MEMCORE_BUILD_PROFILE=release
+ENV MEMQUIRA_BUILD_GIT_SHA=${GIT_SHA}
+ENV MEMQUIRA_BUILD_TIMESTAMP=${BUILD_TIMESTAMP}
+ENV MEMQUIRA_BUILD_PROFILE=release
 
 RUN if [ -n "$CARGO_FEATURES" ]; then \
-      cargo build --release -p memcore-api --features "$CARGO_FEATURES"; \
+      cargo build --release -p memquira-api --features "$CARGO_FEATURES"; \
     else \
-      cargo build --release -p memcore-api; \
+      cargo build --release -p memquira-api; \
     fi
 
 FROM debian:bookworm-slim@sha256:99c0b25c46d0214d5a2091092e7908907dcaecd6a962cde0ac700acee222b6f3 AS runtime
@@ -53,31 +53,34 @@ LABEL org.opencontainers.image.title="memquira" \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
-    && groupadd --system --gid 10001 memcore \
-    && useradd --system --uid 10001 --gid memcore --home-dir /app --shell /usr/sbin/nologin memcore
+    && groupadd --system --gid 10001 memquira \
+    && useradd --system --uid 10001 --gid memquira --home-dir /app --shell /usr/sbin/nologin memquira
 
 WORKDIR /app
 RUN mkdir -p /app/data \
-    && chown -R memcore:memcore /app
+    && chown -R memquira:memquira /app
 
-COPY --from=builder /app/target/release/memcore-api /usr/local/bin/memcore-api
-# Operator-only maintenance (`docker compose exec memcore memcore-maintenance ...`).
-COPY --from=builder /app/target/release/memcore-maintenance /usr/local/bin/memcore-maintenance
+COPY --from=builder /app/target/release/memquira-api /usr/local/bin/memquira-api
+# Operator-only maintenance (`docker compose exec memquira memquira-maintenance ...`).
+COPY --from=builder /app/target/release/memquira-maintenance /usr/local/bin/memquira-maintenance
+# Pre-0.3 binary names, kept so existing operator commands and scripts keep working.
+RUN ln -s /usr/local/bin/memquira-api /usr/local/bin/memcore-api \
+    && ln -s /usr/local/bin/memquira-maintenance /usr/local/bin/memcore-maintenance
 # Licence and third-party notices travel with the image, in the same layout as the release archives
 #: the project LICENSE, licenses/NOTICE, the Rust crates' licences, and the
 # Swagger UI Apache-2.0 LICENSE / NOTICE for the files served at /docs.
-COPY LICENSE licenses/NOTICE licenses/THIRD_PARTY_LICENSES.txt /usr/share/doc/memcore/
-COPY crates/memcore-api/assets/swagger-ui/LICENSE crates/memcore-api/assets/swagger-ui/NOTICE /usr/share/doc/memcore/swagger-ui/
-COPY crates/memcore-api/assets/swagger-ui/swagger-ui-bundle.js.LICENSE.txt \
-     crates/memcore-api/assets/swagger-ui/swagger-ui-es-bundle-core.js.LICENSE.txt \
-     crates/memcore-api/assets/swagger-ui/swagger-ui-es-bundle.js.LICENSE.txt \
-     crates/memcore-api/assets/swagger-ui/swagger-ui-standalone-preset.js.LICENSE.txt /usr/share/doc/memcore/swagger-ui/
+COPY LICENSE licenses/NOTICE licenses/THIRD_PARTY_LICENSES.txt /usr/share/doc/memquira/
+COPY crates/memquira-api/assets/swagger-ui/LICENSE crates/memquira-api/assets/swagger-ui/NOTICE /usr/share/doc/memquira/swagger-ui/
+COPY crates/memquira-api/assets/swagger-ui/swagger-ui-bundle.js.LICENSE.txt \
+     crates/memquira-api/assets/swagger-ui/swagger-ui-es-bundle-core.js.LICENSE.txt \
+     crates/memquira-api/assets/swagger-ui/swagger-ui-es-bundle.js.LICENSE.txt \
+     crates/memquira-api/assets/swagger-ui/swagger-ui-standalone-preset.js.LICENSE.txt /usr/share/doc/memquira/swagger-ui/
 
-USER memcore:memcore
+USER memquira:memquira
 
 EXPOSE 8080
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=15s \
   CMD curl -fsS http://localhost:8080/health/ready || exit 1
 
-CMD ["memcore-api"]
+CMD ["memquira-api"]

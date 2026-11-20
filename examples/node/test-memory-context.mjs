@@ -1,19 +1,19 @@
-// End-to-end check of memoryContext / multiParticipantContext against a running memcore.
-// Needs MEMCORE_E2E_BASE_URL (a disposable local server with episodes on); skipped otherwise.
+// End-to-end check of memoryContext / multiParticipantContext against a running memquira.
+// Needs MEMQUIRA_E2E_BASE_URL (a disposable local server with episodes on); skipped otherwise.
 // Invented data. Run: node test-memory-context.mjs
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { MemcoreClient, newMessage } from "./memcore-client.js";
+import { MemquiraClient, newMessage } from "./memquira-client.js";
 
-const baseUrl = process.env.MEMCORE_E2E_BASE_URL;
+const baseUrl = process.env.MEMQUIRA_E2E_BASE_URL;
 if (!baseUrl) {
-  console.log("skipped: MEMCORE_E2E_BASE_URL not set");
+  console.log("skipped: MEMQUIRA_E2E_BASE_URL not set");
   process.exit(0);
 }
-const client = new MemcoreClient({
+const client = new MemquiraClient({
   baseUrl,
-  apiKey: process.env.MEMCORE_E2E_API_KEY ?? "local-dev-key",
-  orgId: process.env.MEMCORE_E2E_ORG_ID ?? `org_e2e_${randomUUID().slice(0, 8)}`,
+  apiKey: process.env.MEMQUIRA_E2E_API_KEY ?? "local-dev-key",
+  orgId: process.env.MEMQUIRA_E2E_ORG_ID ?? `org_e2e_${randomUUID().slice(0, 8)}`,
 });
 const users = [`user_a_${randomUUID().slice(0, 6)}`, `user_b_${randomUUID().slice(0, 6)}`];
 const messages = [

@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file. The project fol
 
 ## [Unreleased]
 
+### Changed
+
+- **Renamed from Memcore to Memquira.** Configuration variables use the `MEMQUIRA_` prefix, the Cargo packages
+  are `memquira-*`, and the binaries are `memquira-api` and `memquira-maintenance`. The OpenAPI document is now
+  `openapi/memquira.openapi.json` (title `Memquira API`), and `/health` reports `"service": "memquira"`.
+  - Every old `MEMCORE_*` variable still works as a deprecated alias and logs a warning. If an old and a new name
+    are set to different values, startup fails.
+  - The Docker image keeps `memcore-api` and `memcore-maintenance` as symlinks.
+  - The Compose service is now `memquira`: recreate the stack with `--remove-orphans`.
+  - Metric names, storage defaults, Compose project and volume names, API keys and export formats are unchanged.
+  - See [docs/upgrading.md](docs/upgrading.md).
+
 ### Added
 
 - Python client in `clients/python` (package `memquira`, sync and async, typed results and errors,

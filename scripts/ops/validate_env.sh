@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Heuristic env-file validation for memcore (does not print secret values).
+# Heuristic env-file validation for memquira (does not print secret values).
 #
 # Usage:
 #   ./scripts/ops/validate_env.sh .env.production
@@ -7,7 +7,7 @@
 #   ./scripts/ops/validate_env.sh .env.staging staging --live
 #   ./scripts/ops/validate_env.sh .env.local local
 #
-# Modes: local | staging | production (optional second arg; inferred from MEMCORE_ENV / filename)
+# Modes: local | staging | production (optional second arg; inferred from MEMQUIRA_ENV / filename)
 # --live: also check smoke/metrics/base URL readiness (file or process environment)
 # Exit codes: 0 = ok (warnings allowed), 1 = usage/file error, 2 = hard failures
 
@@ -57,6 +57,10 @@ get_var() {
   local key="$1"
   local line
   line="$(grep -E "^[[:space:]]*${key}=" "$ENV_FILE" | tail -n1 || true)"
+  if [[ -z "$line" && "$key" == MEMQUIRA_* ]]; then
+    # Pre-0.3 name, still accepted by the server.
+    line="$(grep -E "^[[:space:]]*MEMCORE_${key#MEMQUIRA_}=" "$ENV_FILE" | tail -n1 || true)"
+  fi
   if [[ -z "$line" ]]; then
     echo ""
     return
@@ -73,6 +77,8 @@ get_var_or_env() {
     echo "$from_file"
     return
   fi
+  local legacy="MEMCORE_${key#MEMQUIRA_}"
+  if [[ -z "${!key-}" && "$key" == MEMQUIRA_* ]]; then echo "${!legacy-}"; return; fi
   echo "${!key-}"
 }
 
@@ -84,43 +90,56 @@ has_placeholder() {
     || [[ "$value" == *change_this* ]]
 }
 
+# Pre-0.3 MEMCORE_* names: accepted (deprecated); a legacy and a current name with different values is refused.
+while IFS= read -r legacy_key; do
+  [[ -n "$legacy_key" ]] || continue
+  current_key="MEMQUIRA_${legacy_key#MEMCORE_}"
+  legacy_line="$(grep -E "^[[:space:]]*${legacy_key}=" "$ENV_FILE" | tail -n1)"
+  current_line="$(grep -E "^[[:space:]]*${current_key}=" "$ENV_FILE" | tail -n1 || true)"
+  if [[ -n "$current_line" && "${current_line#*=}" != "${legacy_line#*=}" ]]; then
+    fail "$legacy_key and $current_key are both set to different values; remove $legacy_key"
+  else
+    warn "$legacy_key is deprecated; rename it to $current_key"
+  fi
+done < <(grep -oE '^[[:space:]]*MEMCORE_[A-Z0-9_]+=' "$ENV_FILE" | sed 's/^[[:space:]]*//;s/=$//' | sort -u || true)
+
 is_example_file=0
 case "$ENV_FILE" in
   *.example|*.example.*) is_example_file=1 ;;
 esac
 
-memcore_env="$(get_var MEMCORE_ENV)"
-auth_mode="$(get_var MEMCORE_AUTH_MODE)"
-fact_backend="$(get_var MEMCORE_FACT_BACKEND)"
-event_backend="$(get_var MEMCORE_EVENT_BACKEND)"
-vector_backend="$(get_var MEMCORE_VECTOR_BACKEND)"
-migration_mode="$(get_var MEMCORE_DATABASE_MIGRATION_MODE)"
-migrations_enabled="$(get_var MEMCORE_DATABASE_MIGRATIONS_ENABLED)"
-cors_enabled="$(get_var MEMCORE_CORS_ENABLED)"
-cors_origins="$(get_var MEMCORE_CORS_ALLOWED_ORIGINS)"
-cors_creds="$(get_var MEMCORE_CORS_ALLOW_CREDENTIALS)"
-backup_enabled="$(get_var MEMCORE_BACKUP_ENABLED)"
-backup_dir="$(get_var MEMCORE_BACKUP_DIR)"
-restore_enabled="$(get_var MEMCORE_RESTORE_ENABLED)"
-postgres_url="$(get_var MEMCORE_POSTGRES_URL)"
-# Alias: MEMCORE_DATABASE_URL in file
+memquira_env="$(get_var MEMQUIRA_ENV)"
+auth_mode="$(get_var MEMQUIRA_AUTH_MODE)"
+fact_backend="$(get_var MEMQUIRA_FACT_BACKEND)"
+event_backend="$(get_var MEMQUIRA_EVENT_BACKEND)"
+vector_backend="$(get_var MEMQUIRA_VECTOR_BACKEND)"
+migration_mode="$(get_var MEMQUIRA_DATABASE_MIGRATION_MODE)"
+migrations_enabled="$(get_var MEMQUIRA_DATABASE_MIGRATIONS_ENABLED)"
+cors_enabled="$(get_var MEMQUIRA_CORS_ENABLED)"
+cors_origins="$(get_var MEMQUIRA_CORS_ALLOWED_ORIGINS)"
+cors_creds="$(get_var MEMQUIRA_CORS_ALLOW_CREDENTIALS)"
+backup_enabled="$(get_var MEMQUIRA_BACKUP_ENABLED)"
+backup_dir="$(get_var MEMQUIRA_BACKUP_DIR)"
+restore_enabled="$(get_var MEMQUIRA_RESTORE_ENABLED)"
+postgres_url="$(get_var MEMQUIRA_POSTGRES_URL)"
+# Alias: MEMQUIRA_DATABASE_URL in file
 if [[ -z "$postgres_url" ]]; then
-  postgres_url="$(get_var MEMCORE_DATABASE_URL)"
+  postgres_url="$(get_var MEMQUIRA_DATABASE_URL)"
 fi
-dev_key="$(get_var MEMCORE_DEV_API_KEY)"
-pepper="$(get_var MEMCORE_API_KEY_PEPPER)"
+dev_key="$(get_var MEMQUIRA_DEV_API_KEY)"
+pepper="$(get_var MEMQUIRA_API_KEY_PEPPER)"
 openai_key="$(get_var OPENAI_API_KEY)"
-redis_url="$(get_var MEMCORE_REDIS_URL)"
-cache_backend="$(get_var MEMCORE_CONTEXT_CACHE_BACKEND)"
-llm_provider="$(get_var MEMCORE_LLM_PROVIDER)"
-embed_provider="$(get_var MEMCORE_EMBEDDING_PROVIDER)"
+redis_url="$(get_var MEMQUIRA_REDIS_URL)"
+cache_backend="$(get_var MEMQUIRA_CONTEXT_CACHE_BACKEND)"
+llm_provider="$(get_var MEMQUIRA_LLM_PROVIDER)"
+embed_provider="$(get_var MEMQUIRA_EMBEDDING_PROVIDER)"
 postgres_password="$(get_var POSTGRES_PASSWORD)"
-metrics_enabled="$(get_var MEMCORE_METRICS_ENABLED)"
-metrics_require_auth="$(get_var MEMCORE_METRICS_REQUIRE_AUTH)"
-metrics_path="$(get_var MEMCORE_METRICS_PATH)"
-qdrant_url="$(get_var MEMCORE_QDRANT_URL)"
+metrics_enabled="$(get_var MEMQUIRA_METRICS_ENABLED)"
+metrics_require_auth="$(get_var MEMQUIRA_METRICS_REQUIRE_AUTH)"
+metrics_path="$(get_var MEMQUIRA_METRICS_PATH)"
+qdrant_url="$(get_var MEMQUIRA_QDRANT_URL)"
 
-env_normalized="$(printf '%s' "$memcore_env" | tr '[:upper:]' '[:lower:]')"
+env_normalized="$(printf '%s' "$memquira_env" | tr '[:upper:]' '[:lower:]')"
 mode="$(printf '%s' "$MODE_ARG" | tr '[:upper:]' '[:lower:]')"
 case "$mode" in
   stage) mode=staging ;;
@@ -157,8 +176,8 @@ case "$mode" in
 esac
 
 # Placeholder scan for known sensitive keys (warn on examples; fail for live staging/prod files).
-for key in MEMCORE_POSTGRES_URL MEMCORE_DATABASE_URL MEMCORE_DEV_API_KEY MEMCORE_API_KEY_PEPPER \
-  MEMCORE_REDIS_URL OPENAI_API_KEY POSTGRES_PASSWORD MEMCORE_SMOKE_TEST_API_KEY MEMCORE_METRICS_API_KEY; do
+for key in MEMQUIRA_POSTGRES_URL MEMQUIRA_DATABASE_URL MEMQUIRA_DEV_API_KEY MEMQUIRA_API_KEY_PEPPER \
+  MEMQUIRA_REDIS_URL OPENAI_API_KEY POSTGRES_PASSWORD MEMQUIRA_SMOKE_TEST_API_KEY MEMQUIRA_METRICS_API_KEY; do
   val="$(get_var "$key")"
   if [[ -n "$val" ]] && has_placeholder "$val"; then
     if [[ "$is_example_file" -eq 1 ]]; then
@@ -172,14 +191,14 @@ for key in MEMCORE_POSTGRES_URL MEMCORE_DATABASE_URL MEMCORE_DEV_API_KEY MEMCORE
 done
 
 if [[ -z "$vector_backend" ]]; then
-  warn "MEMCORE_VECTOR_BACKEND is unset (code may default to LanceDB); set mock/qdrant/lancedb explicitly"
+  warn "MEMQUIRA_VECTOR_BACKEND is unset (code may default to LanceDB); set mock/qdrant/lancedb explicitly"
 fi
 
 if [[ "${restore_enabled}" == "true" ]]; then
   if [[ "$is_staging" -eq 1 || "$is_production" -eq 1 ]]; then
-    fail "MEMCORE_RESTORE_ENABLED=true is unsafe for shared staging/production hosts"
+    fail "MEMQUIRA_RESTORE_ENABLED=true is unsafe for shared staging/production hosts"
   else
-    warn "MEMCORE_RESTORE_ENABLED=true — destructive; keep false unless intentionally testing restore tooling"
+    warn "MEMQUIRA_RESTORE_ENABLED=true — destructive; keep false unless intentionally testing restore tooling"
   fi
 fi
 
@@ -191,7 +210,7 @@ fi
 
 if [[ "${metrics_enabled}" == "true" && "${metrics_require_auth}" == "false" ]]; then
   if [[ "$is_staging" -eq 1 || "$is_production" -eq 1 ]]; then
-    fail "MEMCORE_METRICS_ENABLED=true with MEMCORE_METRICS_REQUIRE_AUTH=false — require auth or private-network-only exception documented elsewhere"
+    fail "MEMQUIRA_METRICS_ENABLED=true with MEMQUIRA_METRICS_REQUIRE_AUTH=false — require auth or private-network-only exception documented elsewhere"
   else
     warn "metrics enabled without auth — use only on private loopback scrapes"
   fi
@@ -199,10 +218,10 @@ fi
 
 if [[ "$is_staging" -eq 1 || "$is_production" -eq 1 ]]; then
   if [[ "${migrations_enabled}" == "false" ]]; then
-    fail "MEMCORE_DATABASE_MIGRATIONS_ENABLED=false is not allowed for ${mode} validation"
+    fail "MEMQUIRA_DATABASE_MIGRATIONS_ENABLED=false is not allowed for ${mode} validation"
   fi
   if [[ "${migration_mode:-auto}" == "disabled" ]]; then
-    fail "MEMCORE_DATABASE_MIGRATION_MODE=disabled is not allowed for ${mode} validation"
+    fail "MEMQUIRA_DATABASE_MIGRATION_MODE=disabled is not allowed for ${mode} validation"
   fi
 
   if [[ "${fact_backend}" == "sqlite" || "${event_backend}" == "sqlite" ]]; then
@@ -211,52 +230,52 @@ if [[ "$is_staging" -eq 1 || "$is_production" -eq 1 ]]; then
 
   if [[ "${fact_backend}" == "postgres" || "${event_backend}" == "postgres" ]]; then
     if [[ -z "$postgres_url" ]]; then
-      fail "MEMCORE_POSTGRES_URL required when using postgres backends"
+      fail "MEMQUIRA_POSTGRES_URL required when using postgres backends"
     fi
   else
     if [[ "$is_staging" -eq 1 ]]; then
-      warn "controlled staging normally uses MEMCORE_FACT_BACKEND=postgres"
+      warn "controlled staging normally uses MEMQUIRA_FACT_BACKEND=postgres"
     fi
   fi
 
   if [[ "${vector_backend}" == "qdrant" ]]; then
     if [[ -z "$qdrant_url" ]]; then
-      fail "MEMCORE_QDRANT_URL required when MEMCORE_VECTOR_BACKEND=qdrant"
+      fail "MEMQUIRA_QDRANT_URL required when MEMQUIRA_VECTOR_BACKEND=qdrant"
     fi
   elif [[ "$is_staging" -eq 1 && "${vector_backend}" != "qdrant" ]]; then
-    warn "controlled staging example uses qdrant; current MEMCORE_VECTOR_BACKEND=${vector_backend:-unset}"
+    warn "controlled staging example uses qdrant; current MEMQUIRA_VECTOR_BACKEND=${vector_backend:-unset}"
   fi
 
   if [[ "${auth_mode:-dev}" == "database" && -z "$pepper" ]]; then
-    fail "MEMCORE_API_KEY_PEPPER required when MEMCORE_AUTH_MODE=database"
+    fail "MEMQUIRA_API_KEY_PEPPER required when MEMQUIRA_AUTH_MODE=database"
   fi
 
   if [[ "${auth_mode:-dev}" == "dev" ]]; then
     if [[ "$is_production" -eq 1 ]]; then
-      warn "MEMCORE_AUTH_MODE=dev in production-shaped env — prefer database auth"
+      warn "MEMQUIRA_AUTH_MODE=dev in production-shaped env — prefer database auth"
     else
-      warn "MEMCORE_AUTH_MODE=dev in staging — prefer database auth for shared staging"
+      warn "MEMQUIRA_AUTH_MODE=dev in staging — prefer database auth for shared staging"
     fi
   fi
 
   if [[ -n "$metrics_path" && "$metrics_path" != /* ]]; then
-    fail "MEMCORE_METRICS_PATH must start with /"
+    fail "MEMQUIRA_METRICS_PATH must start with /"
   fi
 fi
 
 if [[ "${backup_enabled}" == "true" ]]; then
   dir="${backup_dir:-./backups}"
   if [[ -z "$backup_dir" ]]; then
-    warn "MEMCORE_BACKUP_ENABLED=true but MEMCORE_BACKUP_DIR is empty"
+    warn "MEMQUIRA_BACKUP_ENABLED=true but MEMQUIRA_BACKUP_DIR is empty"
   elif [[ ! -d "$dir" && "$is_example_file" -eq 0 ]]; then
-    warn "MEMCORE_BACKUP_ENABLED=true but backup directory does not exist yet: (path omitted)"
+    warn "MEMQUIRA_BACKUP_ENABLED=true but backup directory does not exist yet: (path omitted)"
   fi
 fi
 
-# Context cache: memcore refuses redis (always) and memory (outside local single-process
+# Context cache: memquira refuses redis (always) and memory (outside local single-process
 # development) at startup; a deployment env must use disabled.
 if [[ -n "${cache_backend}" && "${cache_backend}" != "disabled" ]]; then
-  fail "MEMCORE_CONTEXT_CACHE_BACKEND must be disabled (memcore refuses ${cache_backend} at startup)"
+  fail "MEMQUIRA_CONTEXT_CACHE_BACKEND must be disabled (memquira refuses ${cache_backend} at startup)"
 fi
 
 if [[ "${llm_provider}" == "openai" || "${embed_provider}" == "openai" ]]; then
@@ -268,10 +287,10 @@ fi
 # Redacted readiness summary for staging/production (set/missing only).
 if [[ "$is_staging" -eq 1 || "$is_production" -eq 1 ]]; then
   echo "validate_env: readiness (redacted):"
-  for key in MEMCORE_ENV MEMCORE_FACT_BACKEND MEMCORE_POSTGRES_URL POSTGRES_PASSWORD \
-    MEMCORE_VECTOR_BACKEND MEMCORE_QDRANT_URL MEMCORE_AUTH_MODE MEMCORE_API_KEY_PEPPER \
-    MEMCORE_DEV_API_KEY MEMCORE_LLM_PROVIDER OPENAI_API_KEY MEMCORE_REDIS_URL \
-    MEMCORE_METRICS_ENABLED MEMCORE_METRICS_REQUIRE_AUTH MEMCORE_RESTORE_ENABLED; do
+  for key in MEMQUIRA_ENV MEMQUIRA_FACT_BACKEND MEMQUIRA_POSTGRES_URL POSTGRES_PASSWORD \
+    MEMQUIRA_VECTOR_BACKEND MEMQUIRA_QDRANT_URL MEMQUIRA_AUTH_MODE MEMQUIRA_API_KEY_PEPPER \
+    MEMQUIRA_DEV_API_KEY MEMQUIRA_LLM_PROVIDER OPENAI_API_KEY MEMQUIRA_REDIS_URL \
+    MEMQUIRA_METRICS_ENABLED MEMQUIRA_METRICS_REQUIRE_AUTH MEMQUIRA_RESTORE_ENABLED; do
     val="$(get_var "$key")"
     if [[ -n "$val" ]]; then
       if has_placeholder "$val"; then
@@ -290,72 +309,72 @@ if [[ "$LIVE" -eq 1 ]]; then
   if [[ "$is_staging" -ne 1 && "$is_production" -ne 1 ]]; then
     warn "--live is intended for staging/production; continuing with live checks anyway"
   fi
-  smoke_key="$(get_var_or_env MEMCORE_SMOKE_TEST_API_KEY)"
-  smoke_org="$(get_var_or_env MEMCORE_SMOKE_TEST_ORG_ID)"
-  smoke_user="$(get_var_or_env MEMCORE_SMOKE_TEST_USER_ID)"
-  metrics_key="$(get_var_or_env MEMCORE_METRICS_API_KEY)"
-  base_url="$(get_var_or_env MEMCORE_STAGING_BASE_URL)"
+  smoke_key="$(get_var_or_env MEMQUIRA_SMOKE_TEST_API_KEY)"
+  smoke_org="$(get_var_or_env MEMQUIRA_SMOKE_TEST_ORG_ID)"
+  smoke_user="$(get_var_or_env MEMQUIRA_SMOKE_TEST_USER_ID)"
+  metrics_key="$(get_var_or_env MEMQUIRA_METRICS_API_KEY)"
+  base_url="$(get_var_or_env MEMQUIRA_STAGING_BASE_URL)"
   # Dev key can serve as smoke/metrics for short-lived personal stacks
   if [[ -z "$smoke_key" ]]; then
-    smoke_key="$(get_var_or_env MEMCORE_DEV_API_KEY)"
+    smoke_key="$(get_var_or_env MEMQUIRA_DEV_API_KEY)"
   fi
   if [[ -z "$metrics_key" ]]; then
-    metrics_key="$(get_var_or_env MEMCORE_SMOKE_TEST_API_KEY)"
+    metrics_key="$(get_var_or_env MEMQUIRA_SMOKE_TEST_API_KEY)"
     if [[ -z "$metrics_key" ]]; then
-      metrics_key="$(get_var_or_env MEMCORE_DEV_API_KEY)"
+      metrics_key="$(get_var_or_env MEMQUIRA_DEV_API_KEY)"
     fi
   fi
 
   echo "validate_env: live readiness (redacted):"
   if [[ -n "$smoke_key" ]]; then
     if has_placeholder "$smoke_key"; then
-      echo "  MEMCORE_SMOKE_TEST_API_KEY=placeholder"
+      echo "  MEMQUIRA_SMOKE_TEST_API_KEY=placeholder"
       fail "smoke API key still contains a placeholder"
     else
-      echo "  MEMCORE_SMOKE_TEST_API_KEY=set"
+      echo "  MEMQUIRA_SMOKE_TEST_API_KEY=set"
     fi
   else
-    echo "  MEMCORE_SMOKE_TEST_API_KEY=missing"
-    fail "live check requires MEMCORE_SMOKE_TEST_API_KEY (file or shell) or MEMCORE_DEV_API_KEY"
+    echo "  MEMQUIRA_SMOKE_TEST_API_KEY=missing"
+    fail "live check requires MEMQUIRA_SMOKE_TEST_API_KEY (file or shell) or MEMQUIRA_DEV_API_KEY"
   fi
 
   if [[ -n "$smoke_org" ]]; then
-    echo "  MEMCORE_SMOKE_TEST_ORG_ID=set"
+    echo "  MEMQUIRA_SMOKE_TEST_ORG_ID=set"
   else
-    echo "  MEMCORE_SMOKE_TEST_ORG_ID=missing"
-    fail "live check requires MEMCORE_SMOKE_TEST_ORG_ID"
+    echo "  MEMQUIRA_SMOKE_TEST_ORG_ID=missing"
+    fail "live check requires MEMQUIRA_SMOKE_TEST_ORG_ID"
   fi
 
   if [[ -n "$smoke_user" ]]; then
-    echo "  MEMCORE_SMOKE_TEST_USER_ID=set"
+    echo "  MEMQUIRA_SMOKE_TEST_USER_ID=set"
   else
-    echo "  MEMCORE_SMOKE_TEST_USER_ID=missing"
-    warn "MEMCORE_SMOKE_TEST_USER_ID unset — smoke_test.sh defaults to smoke-test-user"
+    echo "  MEMQUIRA_SMOKE_TEST_USER_ID=missing"
+    warn "MEMQUIRA_SMOKE_TEST_USER_ID unset — smoke_test.sh defaults to smoke-test-user"
   fi
 
   if [[ -n "$base_url" ]]; then
-    echo "  MEMCORE_STAGING_BASE_URL=set"
+    echo "  MEMQUIRA_STAGING_BASE_URL=set"
   else
-    echo "  MEMCORE_STAGING_BASE_URL=missing"
-    fail "live check requires MEMCORE_STAGING_BASE_URL"
+    echo "  MEMQUIRA_STAGING_BASE_URL=missing"
+    fail "live check requires MEMQUIRA_STAGING_BASE_URL"
   fi
 
-  metrics_on="$(get_var MEMCORE_METRICS_ENABLED)"
-  metrics_auth="$(get_var MEMCORE_METRICS_REQUIRE_AUTH)"
+  metrics_on="$(get_var MEMQUIRA_METRICS_ENABLED)"
+  metrics_auth="$(get_var MEMQUIRA_METRICS_REQUIRE_AUTH)"
   if [[ "${metrics_on}" == "true" && "${metrics_auth}" != "false" ]]; then
     if [[ -n "$metrics_key" ]]; then
       if has_placeholder "$metrics_key"; then
-        echo "  MEMCORE_METRICS_API_KEY=placeholder"
+        echo "  MEMQUIRA_METRICS_API_KEY=placeholder"
         fail "metrics API key still contains a placeholder"
       else
-        echo "  MEMCORE_METRICS_API_KEY=set"
+        echo "  MEMQUIRA_METRICS_API_KEY=set"
       fi
     else
-      echo "  MEMCORE_METRICS_API_KEY=missing"
-      fail "live check requires MEMCORE_METRICS_API_KEY when metrics auth is required"
+      echo "  MEMQUIRA_METRICS_API_KEY=missing"
+      fail "live check requires MEMQUIRA_METRICS_API_KEY when metrics auth is required"
     fi
   else
-    echo "  MEMCORE_METRICS_API_KEY=skipped (metrics disabled or auth not required)"
+    echo "  MEMQUIRA_METRICS_API_KEY=skipped (metrics disabled or auth not required)"
   fi
 fi
 

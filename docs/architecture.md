@@ -7,18 +7,18 @@ talks to databases and models only through traits, and the API crate wires concr
 
 ```mermaid
 flowchart TB
-    subgraph memcore-api
+    subgraph memquira-api
       R[Routes, auth, tenant scoping,<br/>rate limit, admission control]
-      M[memcore-maintenance CLI]
+      M[memquira-maintenance CLI]
     end
-    subgraph memcore-core
+    subgraph memquira-core
       E[Memory engine<br/>ingest, lifecycle, search, context]
       J[Ingest journal, quotas,<br/>retention, export / import]
     end
-    P[memcore-providers<br/>OpenAI-compatible clients, mocks,<br/>retries, circuit breaker, guardrails]
-    S[memcore-storage<br/>SQLite, PostgreSQL, Qdrant,<br/>migrations]
-    C[memcore-config<br/>typed settings + validation]
-    X[memcore-common<br/>errors, redaction, key hashing]
+    P[memquira-providers<br/>OpenAI-compatible clients, mocks,<br/>retries, circuit breaker, guardrails]
+    S[memquira-storage<br/>SQLite, PostgreSQL, Qdrant,<br/>migrations]
+    C[memquira-config<br/>typed settings + validation]
+    X[memquira-common<br/>errors, redaction, key hashing]
     R --> E
     M --> E
     E --> P
@@ -29,14 +29,14 @@ flowchart TB
 
 | Crate | Responsibility |
 |---|---|
-| `memcore-api` | Axum server: routing, API-key authentication, organization scoping, rate limiting, admission control, request deadlines, security headers, metrics, OpenAPI and Swagger UI. Also the `memcore-maintenance` operator CLI and the `export_openapi` tool |
-| `memcore-core` | The memory engine: extraction orchestration, fact lifecycle (add / update / delete / no-op), deduplication, search, context assembly, quotas, retention, export and import, the ingest journal |
-| `memcore-providers` | LLM and embedding providers behind traits: an OpenAI-compatible client, deterministic mocks, retries, timeouts, a circuit breaker, concurrency limits, provider guardrails and usage accounting |
-| `memcore-storage` | Fact, event, episode and API-key stores for SQLite and PostgreSQL, the Qdrant vector store, schema migrations, startup dependency checks |
-| `memcore-config` | Environment-based settings with validation at startup (`load_settings`) |
-| `memcore-common` | Shared error type, log redaction, API-key hashing |
+| `memquira-api` | Axum server: routing, API-key authentication, organization scoping, rate limiting, admission control, request deadlines, security headers, metrics, OpenAPI and Swagger UI. Also the `memquira-maintenance` operator CLI and the `export_openapi` tool |
+| `memquira-core` | The memory engine: extraction orchestration, fact lifecycle (add / update / delete / no-op), deduplication, search, context assembly, quotas, retention, export and import, the ingest journal |
+| `memquira-providers` | LLM and embedding providers behind traits: an OpenAI-compatible client, deterministic mocks, retries, timeouts, a circuit breaker, concurrency limits, provider guardrails and usage accounting |
+| `memquira-storage` | Fact, event, episode and API-key stores for SQLite and PostgreSQL, the Qdrant vector store, schema migrations, startup dependency checks |
+| `memquira-config` | Environment-based settings with validation at startup (`load_settings`) |
+| `memquira-common` | Shared error type, log redaction, API-key hashing |
 
-`memcore` is the engine's internal name; the crates, binaries and `MEMCORE_*` settings keep it.
+`memquira` is the engine's internal name; the crates, binaries and `MEMQUIRA_*` settings keep it.
 
 ## Data model
 
@@ -44,7 +44,7 @@ flowchart TB
   `Knowledge`, `Event`, ...), confidence, importance, optional subject and event time, the messages it came from,
   and timestamps (`valid_at`, `invalid_at`, `recorded_at`, `updated_at`). Deletion is soft; a fact is active
   while it is not deleted, invalidated or superseded.
-- **Episode (optional):** a stored source message (`MEMCORE_EPISODES_ENABLED`), searchable by meaning. Episodes
+- **Episode (optional):** a stored source message (`MEMQUIRA_EPISODES_ENABLED`), searchable by meaning. Episodes
   let a context include what was actually said, and they back message-id deduplication.
 - **Memory event:** an audit record of each operation (input text is never exposed through the API).
 - **API key:** hashed with HMAC-SHA256 and a server-side pepper, bound to one organization, with scopes
@@ -59,8 +59,8 @@ auth) and the `X-Organization-ID` header; the user from the request.
    admission control.
 2. Record the operation in the ingest journal (so an interrupted write can be rolled back) and, with episodes on,
    store each message as an episode. Messages with a known `message_id` are recognised and not stored twice.
-3. Redact PII patterns from message content (`MEMCORE_ENABLE_PII_REDACTION`).
-4. Extract candidate facts with the LLM, window by window (`MEMCORE_EXTRACTION_WINDOW_TURNS`). Structured
+3. Redact PII patterns from message content (`MEMQUIRA_ENABLE_PII_REDACTION`).
+4. Extract candidate facts with the LLM, window by window (`MEMQUIRA_EXTRACTION_WINDOW_TURNS`). Structured
    extraction attributes each fact to a speaker, resolves dates and cites its source messages.
 5. For each candidate, find related stored facts and ask the classifier for a decision: add, update an existing
    fact, delete one, or no-op. Exact duplicates are caught without a model call. The
@@ -89,7 +89,7 @@ auth) and the `X-Organization-ID` header; the user from the request.
 | `embedded` | SQLite | `mock` (in memory) or Qdrant | Local development, tests, small single-node use |
 | `production` | PostgreSQL | Qdrant | Production |
 
-Migrations run at startup (`MEMCORE_DATABASE_MIGRATION_MODE=auto`) and are checksummed: a database whose applied
+Migrations run at startup (`MEMQUIRA_DATABASE_MIGRATION_MODE=auto`) and are checksummed: a database whose applied
 migrations differ from the binary's is refused. Qdrant collections record the embedding model's identity; the
 server refuses to start against a collection built with a different embedding model or dimension.
 
@@ -101,14 +101,14 @@ server refuses to start against a collection built with a different embedding mo
   breaker, and guardrails on input size, output tokens and the number of calls per process.
 - **Rate limits and quotas:** per-organization requests per minute; optional limits on memories per user and users
   per organization.
-- **Graceful shutdown:** in-flight requests drain within `MEMCORE_GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS`.
+- **Graceful shutdown:** in-flight requests drain within `MEMQUIRA_GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS`.
 
 Rate limits, circuit breakers and caches are process-local: run one API instance per database.
 
 ## Quality tiers
 
 The server reports a quality tier at `GET /ready` and can be required to start only in a given tier
-(`MEMCORE_REQUIRE_QUALITY_TIER`):
+(`MEMQUIRA_REQUIRE_QUALITY_TIER`):
 
 - `development-mock`: mock providers (local development and tests only).
 - `compatible-unvalidated`: a real provider and configuration that this project has not evaluated. This is the tier

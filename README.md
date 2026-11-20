@@ -42,10 +42,10 @@ easy to leak across users. Memquira keeps a compact, structured memory per user 
 
 ```mermaid
 flowchart LR
-    App[Your application or agent] -- REST + API key --> API[memcore-api<br/>Axum HTTP server]
-    API --> Core[memcore-core<br/>memory engine]
-    Core --> Providers[memcore-providers<br/>LLM + embeddings]
-    Core --> Storage[memcore-storage]
+    App[Your application or agent] -- REST + API key --> API[memquira-api<br/>Axum HTTP server]
+    API --> Core[memquira-core<br/>memory engine]
+    Core --> Providers[memquira-providers<br/>LLM + embeddings]
+    Core --> Storage[memquira-storage]
     Providers --> LLM[(OpenAI-compatible<br/>endpoints)]
     Storage --> PG[(PostgreSQL or SQLite<br/>facts, events, keys)]
     Storage --> QD[(Qdrant<br/>vectors)]
@@ -122,7 +122,7 @@ Content-Type: application/json
 `user_id` is your application's identifier for the end user; Memquira trusts the calling application for it, so
 call the API from your backend, never from a browser. Endpoints, parameters and errors:
 [docs/api-reference.md](docs/api-reference.md). The server also serves `GET /openapi.json` and Swagger UI at
-`GET /docs`; the committed spec is [openapi/memcore.openapi.json](openapi/memcore.openapi.json).
+`GET /docs`; the committed spec is [openapi/memquira.openapi.json](openapi/memquira.openapi.json).
 
 For Python there is a typed client with sync and async versions and safe retries, in
 [clients/python](clients/python/) (`pip install ./clients/python`; not on PyPI yet). Minimal example clients in
@@ -131,15 +131,15 @@ Node.js and curl are in [examples/](examples/).
 ## Configuration
 
 Configuration is read from environment variables (an optional `.env` file is loaded at startup). The
-`MEMCORE_` prefix is the engine's configuration namespace, and the crates and binaries keep the `memcore` name.
+`MEMQUIRA_` prefix is the engine's configuration namespace, and the crates and binaries keep the `memquira` name.
 
 | Setting | Purpose |
 |---|---|
-| `MEMCORE_AUTH_MODE=database`, `MEMCORE_API_KEY_PEPPER` | Hashed, scoped, organization-bound API keys (`dev` mode with one shared key is for local use only) |
-| `MEMCORE_POSTGRES_URL`, `MEMCORE_QDRANT_URL` | Storage (Qdrant over gRPC, port 6334) |
-| `MEMCORE_LLM_*`, `MEMCORE_EMBEDDING_*` | Extraction model and embedding model, configured independently |
-| `MEMCORE_SEARCH_MAX_LIMIT=100`, `MEMCORE_EPISODES_ENABLED=true` | The search limit is required by `POST /api/v1/memories/context`; episodes add source messages to it and enable message-id deduplication |
-| `MEMCORE_RATE_LIMIT_*`, `MEMCORE_ADMISSION_*`, `MEMCORE_QUOTAS_ENABLED` | Abuse and capacity protection |
+| `MEMQUIRA_AUTH_MODE=database`, `MEMQUIRA_API_KEY_PEPPER` | Hashed, scoped, organization-bound API keys (`dev` mode with one shared key is for local use only) |
+| `MEMQUIRA_POSTGRES_URL`, `MEMQUIRA_QDRANT_URL` | Storage (Qdrant over gRPC, port 6334) |
+| `MEMQUIRA_LLM_*`, `MEMQUIRA_EMBEDDING_*` | Extraction model and embedding model, configured independently |
+| `MEMQUIRA_SEARCH_MAX_LIMIT=100`, `MEMQUIRA_EPISODES_ENABLED=true` | The search limit is required by `POST /api/v1/memories/context`; episodes add source messages to it and enable message-id deduplication |
+| `MEMQUIRA_RATE_LIMIT_*`, `MEMQUIRA_ADMISSION_*`, `MEMQUIRA_QUOTAS_ENABLED` | Abuse and capacity protection |
 
 Starting points: [.env.example](.env.example) (local) and [.env.production.example](.env.production.example)
 (production). Reference: [docs/configuration.md](docs/configuration.md). Providers:
@@ -171,6 +171,7 @@ TLS-terminating reverse proxy in front of it. Deployment, backups, upgrades and 
 | [Operations](docs/operations.md) | Backups, export and import, migrations, maintenance, metrics |
 | [Security](docs/security.md) | Threat model, secrets, hardening checklist |
 | [Development](docs/development.md) | Building, testing, project layout |
+| [Upgrading](docs/upgrading.md) | Upgrading from 0.2.x (the Memcore → Memquira rename) |
 | [Troubleshooting](docs/troubleshooting.md) | Common startup and request errors |
 
 ## Security
@@ -198,4 +199,4 @@ the [Code of Conduct](CODE_OF_CONDUCT.md).
 Memquira is licensed under the **Apache License, Version 2.0** ([LICENSE](LICENSE)). Copyright and third-party
 notices: [licenses/NOTICE](licenses/NOTICE) and
 [licenses/THIRD_PARTY_LICENSES.txt](licenses/THIRD_PARTY_LICENSES.txt). The vendored Swagger UI is also Apache-2.0
-([crates/memcore-api/assets/swagger-ui/LICENSE](crates/memcore-api/assets/swagger-ui/LICENSE)).
+([crates/memquira-api/assets/swagger-ui/LICENSE](crates/memquira-api/assets/swagger-ui/LICENSE)).

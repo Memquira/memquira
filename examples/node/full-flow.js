@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Create → search → context → delete using the example MemcoreClient.
- * Never prints MEMCORE_API_KEY.
+ * Create → search → context → delete using the example MemquiraClient.
+ * Never prints MEMQUIRA_API_KEY.
  */
 
 import { randomUUID } from "node:crypto";
 
-import { MemcoreApiError, MemcoreClient, newMessage } from "./memcore-client.js";
+import { MemquiraApiError, MemquiraClient, newMessage } from "./memquira-client.js";
 
 function requireEnv(name) {
   const value = (process.env[name] || "").trim();
@@ -18,12 +18,12 @@ function requireEnv(name) {
 }
 
 async function main() {
-  const baseUrl = requireEnv("MEMCORE_BASE_URL");
-  const apiKey = requireEnv("MEMCORE_API_KEY");
-  const orgId = requireEnv("MEMCORE_ORG_ID");
-  const userId = (process.env.MEMCORE_USER_ID || "user_demo").trim() || "user_demo";
+  const baseUrl = requireEnv("MEMQUIRA_BASE_URL");
+  const apiKey = requireEnv("MEMQUIRA_API_KEY");
+  const orgId = requireEnv("MEMQUIRA_ORG_ID");
+  const userId = (process.env.MEMQUIRA_USER_ID || "user_demo").trim() || "user_demo";
 
-  const client = new MemcoreClient({ baseUrl, apiKey, orgId });
+  const client = new MemquiraClient({ baseUrl, apiKey, orgId });
 
   // An explicit session, and each message created once with its own stable message_id.
   const sessionId = `session_${randomUUID()}`;
@@ -37,7 +37,7 @@ async function main() {
     try {
       created = await client.createMemory({ userId, sessionId, messages });
     } catch (err) {
-      if (!(err instanceof MemcoreApiError) || err.code !== "REQUEST_DEADLINE_EXCEEDED") {
+      if (!(err instanceof MemquiraApiError) || err.code !== "REQUEST_DEADLINE_EXCEEDED") {
         throw err;
       }
       // The timed-out request may have been partly stored. Retry once, later, with the SAME
@@ -73,7 +73,7 @@ async function main() {
       console.error("warning: no memory id returned; skipping delete");
     }
   } catch (error) {
-    if (error instanceof MemcoreApiError) {
+    if (error instanceof MemquiraApiError) {
       console.error(String(error));
       process.exit(1);
     }

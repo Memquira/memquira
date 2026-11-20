@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Safe smoke test against a running memcore API.
+# Safe smoke test against a running memquira API.
 #
 # Unauthenticated (default — read-only operational checks):
 #   ./scripts/ops/smoke_test.sh http://localhost:8080
 #
 # Authenticated write/read/delete (requires explicit flag):
-#   MEMCORE_SMOKE_TEST_API_KEY=... \
-#   MEMCORE_SMOKE_TEST_ORG_ID=org_smoke \
-#   MEMCORE_SMOKE_TEST_USER_ID=smoke-test-user \
+#   MEMQUIRA_SMOKE_TEST_API_KEY=... \
+#   MEMQUIRA_SMOKE_TEST_ORG_ID=org_smoke \
+#   MEMQUIRA_SMOKE_TEST_USER_ID=smoke-test-user \
 #   ./scripts/ops/smoke_test.sh http://localhost:8080 --authenticated
 #
 # Never prints the API key. Requires curl.
@@ -15,6 +15,10 @@
 # Do not run destructive broad cleanup. Authenticated mode only touches the smoke-test user.
 
 set -euo pipefail
+# Pre-0.3 names: an exported MEMCORE_X is used when MEMQUIRA_X is unset.
+for _legacy in $(compgen -e | grep '^MEMCORE_' || true); do
+  _current="MEMQUIRA_${_legacy#MEMCORE_}"; [[ -n "${!_current+x}" ]] || export "$_current=${!_legacy}"
+done
 
 BASE_URL=""
 AUTHENTICATED=0
@@ -23,7 +27,7 @@ usage() {
   echo "usage: $0 <base-url> [--authenticated]" >&2
   echo "  Unauthenticated: GET /health /ready /api/v1/version" >&2
   echo "  --authenticated: also create/search/context/delete a smoke-test memory" >&2
-  echo "  Requires MEMCORE_SMOKE_TEST_API_KEY (and preferably MEMCORE_SMOKE_TEST_ORG_ID)" >&2
+  echo "  Requires MEMQUIRA_SMOKE_TEST_API_KEY (and preferably MEMQUIRA_SMOKE_TEST_ORG_ID)" >&2
   echo "  Authenticated mode requires jq or python3 for reliable delete cleanup" >&2
   exit 1
 }
@@ -56,10 +60,10 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 1
 fi
 
-API_KEY="${MEMCORE_SMOKE_TEST_API_KEY:-}"
-ORG_ID="${MEMCORE_SMOKE_TEST_ORG_ID:-org_smoke}"
-USER_ID="${MEMCORE_SMOKE_TEST_USER_ID:-smoke-test-user}"
-EXPECT_REAL_PROVIDER="${MEMCORE_SMOKE_TEST_EXPECT_REAL_PROVIDER:-false}"
+API_KEY="${MEMQUIRA_SMOKE_TEST_API_KEY:-}"
+ORG_ID="${MEMQUIRA_SMOKE_TEST_ORG_ID:-org_smoke}"
+USER_ID="${MEMQUIRA_SMOKE_TEST_USER_ID:-smoke-test-user}"
+EXPECT_REAL_PROVIDER="${MEMQUIRA_SMOKE_TEST_EXPECT_REAL_PROVIDER:-false}"
 
 fail() {
   echo "error: $*" >&2
@@ -191,7 +195,7 @@ auth_curl() {
       -X "$method" \
       -H "Authorization: Bearer ${API_KEY}" \
       -H "X-Organization-ID: ${ORG_ID}" \
-      -H "X-Memcore-Test-Source: smoke-test" \
+      -H "X-Memquira-Test-Source: smoke-test" \
       -H "Content-Type: application/json" \
       -d "$json_body" \
       "$url" || true)"
@@ -200,7 +204,7 @@ auth_curl() {
       -X "$method" \
       -H "Authorization: Bearer ${API_KEY}" \
       -H "X-Organization-ID: ${ORG_ID}" \
-      -H "X-Memcore-Test-Source: smoke-test" \
+      -H "X-Memquira-Test-Source: smoke-test" \
       "$url" || true)"
   fi
 
@@ -226,7 +230,7 @@ check_get /api/v1/version
 
 if [[ "$AUTHENTICATED" -eq 1 ]]; then
   if [[ -z "$API_KEY" ]]; then
-    fail "MEMCORE_SMOKE_TEST_API_KEY is required with --authenticated"
+    fail "MEMQUIRA_SMOKE_TEST_API_KEY is required with --authenticated"
   fi
   require_json_tool_for_cleanup
 
@@ -276,7 +280,7 @@ EOF
 
   case "$(echo "$EXPECT_REAL_PROVIDER" | tr '[:upper:]' '[:lower:]')" in
     true|1|yes)
-      echo "note: MEMCORE_SMOKE_TEST_EXPECT_REAL_PROVIDER=true — ensure API was started with real providers enabled and check admin guardrails/usage separately (keys not printed)"
+      echo "note: MEMQUIRA_SMOKE_TEST_EXPECT_REAL_PROVIDER=true — ensure API was started with real providers enabled and check admin guardrails/usage separately (keys not printed)"
       ;;
   esac
 elif [[ -n "$API_KEY" ]]; then
@@ -286,7 +290,7 @@ elif [[ -n "$API_KEY" ]]; then
   code="$(curl -sS -o "$body" -w '%{http_code}' \
     -H "Authorization: Bearer ${API_KEY}" \
     -H "X-Organization-ID: ${ORG_ID}" \
-    -H "X-Memcore-Test-Source: smoke-test" \
+    -H "X-Memquira-Test-Source: smoke-test" \
     "$url" || true)"
   if [[ "$code" != 2* ]]; then
     echo "error: authenticated GET /api/v1/admin/org/summary returned HTTP $code" >&2
@@ -299,7 +303,7 @@ elif [[ -n "$API_KEY" ]]; then
   echo "note: pass --authenticated for create/search/context/delete smoke flow"
   rm -f "$body"
 else
-  echo "skip: authenticated checks (set MEMCORE_SMOKE_TEST_API_KEY and optionally --authenticated)"
+  echo "skip: authenticated checks (set MEMQUIRA_SMOKE_TEST_API_KEY and optionally --authenticated)"
 fi
 
 echo "smoke_test: passed against $BASE_URL"

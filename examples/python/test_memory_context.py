@@ -1,7 +1,7 @@
-"""End-to-end check of ``memory_context`` / ``multi_participant_context`` against a running memcore.
+"""End-to-end check of ``memory_context`` / ``multi_participant_context`` against a running memquira.
 
-Needs ``MEMCORE_E2E_BASE_URL`` (a disposable local server with episodes on, e.g. mock providers);
-skipped otherwise. ``MEMCORE_E2E_API_KEY`` / ``MEMCORE_E2E_ORG_ID`` default to placeholders for a
+Needs ``MEMQUIRA_E2E_BASE_URL`` (a disposable local server with episodes on, e.g. mock providers);
+skipped otherwise. ``MEMQUIRA_E2E_API_KEY`` / ``MEMQUIRA_E2E_ORG_ID`` default to placeholders for a
 server with auth off. Invented data. Run: ``python -m unittest test_memory_context``.
 """
 
@@ -11,19 +11,19 @@ import os
 import unittest
 import uuid
 
-from memcore_client import MemcoreClient, new_message
+from memquira_client import MemquiraClient, new_message
 
-BASE_URL = os.environ.get("MEMCORE_E2E_BASE_URL", "")
+BASE_URL = os.environ.get("MEMQUIRA_E2E_BASE_URL", "")
 
 
-@unittest.skipUnless(BASE_URL, "MEMCORE_E2E_BASE_URL not set")
+@unittest.skipUnless(BASE_URL, "MEMQUIRA_E2E_BASE_URL not set")
 class MemoryContextE2E(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.client = MemcoreClient(
+        cls.client = MemquiraClient(
             BASE_URL,
-            os.environ.get("MEMCORE_E2E_API_KEY", "local-dev-key"),
-            os.environ.get("MEMCORE_E2E_ORG_ID", f"org_e2e_{uuid.uuid4().hex[:8]}"),
+            os.environ.get("MEMQUIRA_E2E_API_KEY", "local-dev-key"),
+            os.environ.get("MEMQUIRA_E2E_ORG_ID", f"org_e2e_{uuid.uuid4().hex[:8]}"),
         )
         # One conversation stored for both participants (the per-participant memory protocol):
         # every message is an episode of both users, with the same message ids.

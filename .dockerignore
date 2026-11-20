@@ -26,8 +26,8 @@ trivy-results.*
 .DS_Store
 Thumbs.db
 **/*.png
-# The Swagger UI favicons are compiled into memcore-api (include_bytes!).
-!crates/memcore-api/assets/swagger-ui/*.png
+# The Swagger UI favicons are compiled into memquira-api (include_bytes!).
+!crates/memquira-api/assets/swagger-ui/*.png
 **/agent-transcripts/
 terminals/
 
