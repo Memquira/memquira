@@ -141,14 +141,25 @@ pub(crate) async fn timed<T>(
 pub const CLASSIFICATION_SKIPPED_METRIC: &str = "memcore_ingest_classification_skipped_total";
 
 /// Counts one skipped classification call. Never records ids, tenants or content.
-/// A classifier Update / Delete the semantic matcher stored as an Add, by
-/// reason (bounded: `target_not_offered`, `different_subject`, `event_is_history`,
-/// `distinct_event_times`).
+/// A classifier decision the semantic matcher stored as an Add, by reason (bounded: `target_not_offered`,
+/// `different_subject`, `event_is_history`, `distinct_event_times`, `stale_target`, and `noop_new_value`: a NoOp
+/// whose candidate differs from every offered fact only in its event time or expression, with the value guard on
+/// and the `semantic_v23` matcher).
 pub const RELATED_DECISION_DOWNGRADED_METRIC: &str =
     "memcore_ingest_related_decision_downgraded_total";
 
 pub(crate) fn record_related_decision_downgraded(reason: &'static str) {
     metrics::counter!(RELATED_DECISION_DOWNGRADED_METRIC, "reason" => reason).increment(1);
+}
+
+/// A candidate fact rejected because the model's classification was invalid (unparsable JSON, an unrecognized
+/// operation, a bad target or confidence). The write still succeeds and reports it in
+/// `summary.discarded.invalid_classification`; this counter makes such losses visible on dashboards. One fixed
+/// label value, never model text, ids or tenants.
+pub const CANDIDATE_REJECTED_METRIC: &str = "memcore_ingest_candidates_rejected_total";
+
+pub(crate) fn record_candidate_rejected(reason: &'static str) {
+    metrics::counter!(CANDIDATE_REJECTED_METRIC, "reason" => reason).increment(1);
 }
 
 pub(crate) fn record_classification_skipped() {

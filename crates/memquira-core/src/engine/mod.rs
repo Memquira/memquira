@@ -38,7 +38,8 @@ use crate::consolidation::{
 use crate::context_cache_metrics_recorder;
 use crate::dedup::{
     DedupValueGuard, DeduplicationDecision, EmbeddingDeduplicationConfig, detect_duplicate_guarded,
-    detect_embedding_duplicate_guarded, find_existing_facts_for_dedup, vector_hit_rejection,
+    detect_embedding_duplicate_guarded, find_existing_facts_for_dedup,
+    structured_value_compatibility, vector_hit_rejection,
 };
 use crate::export::{
     EXPORT_EPISODES_LIMIT, EXPORT_EVENTS_LIMIT, EXPORT_FACTS_LIMIT, UserMemoryExport,
@@ -892,12 +893,36 @@ impl MemoryEngine {
                             "a candidate fact was rejected: the model's classification was invalid"
                         );
                         summary.discard(FactDiscardReason::InvalidClassification);
+                        crate::observability::record_candidate_rejected("invalid_classification");
                         continue 'candidates;
                     }
                     Err(error) => return Err(error),
                 }
             };
             record_stage("ingest", "dedup_classify", dedup_started);
+
+            // A classifier NoOp drops the candidate. The classifier sees the sentences but not the event times or their
+            // expressions ("March 10" with no message time to settle it). With the value guard on, under the semantic
+            // matcher, a NoOp is therefore not honoured when the candidate differs from every offered fact only in
+            // that hidden part: the candidate is stored as an Add, so a rescheduled date is not lost. A NoOp on
+            // sentences whose values differ visibly stays the classifier's decision. The guard never decides an
+            // update.
+            let decision = match (&decision.operation, offered.as_deref()) {
+                (FactOperation::NoOp, Some(offered))
+                    if self.dedup_value_guard.is_on()
+                        && self.related_fact_matcher == RelatedFactMatcher::SemanticV23
+                        && noop_hides_a_new_time(&candidate, offered) =>
+                {
+                    crate::observability::record_related_decision_downgraded("noop_new_value");
+                    FactOperationDecision {
+                        operation: FactOperation::Add,
+                        target_fact_id: None,
+                        reason: Some("NoOp not applied: noop_new_value".to_string()),
+                        confidence: decision.confidence,
+                    }
+                }
+                _ => decision,
+            };
 
             // Under the semantic matcher an Update / Delete applies only to
             // an offered fact and keeps history; anything else it may not change is an Add.
@@ -3850,4 +3875,23 @@ fn cap_export_section<T>(
         });
     }
     rows
+}
+
+/// Whether a classifier NoOp would hide a value the classifier did not see: no offered fact is value-compatible with
+/// the candidate once event times and their expressions count, yet some offered fact is compatible on the sentences
+/// alone (so the only difference is the time).
+fn noop_hides_a_new_time(candidate: &crate::CandidateFact, offered: &[Fact]) -> bool {
+    !offered.is_empty()
+        && offered.iter().all(|fact| {
+            structured_value_compatibility(
+                &candidate.content,
+                &candidate.structure,
+                &fact.content,
+                &fact.structure,
+            )
+            .is_err()
+        })
+        && offered.iter().any(|fact| {
+            crate::dedup::value_compatibility(&candidate.content, None, &fact.content, None).is_ok()
+        })
 }

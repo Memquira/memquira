@@ -24,10 +24,14 @@
 //! omits never make it distinct (a less specific restatement is still a duplicate). Anything the
 //! normaliser cannot interpret is compared as a literal token, which can only make the guard keep a
 //! candidate, never discard one.
+//!
+//! The event-time expression as written (`event_time_text`, "March 10") counts as part of the sentence. Without a
+//! message or session time a yearless or relative date cannot be settled, so no event time is stored and the
+//! expression is the only record of the date; two facts that differ only there are not the same fact.
 
 use std::collections::BTreeSet;
 
-use crate::TemporalValue;
+use crate::{FactStructure, TemporalValue};
 
 /// Whether near-duplicate dedup checks values (`MEMQUIRA_DEDUP_VALUE_GUARD`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -83,6 +87,34 @@ pub struct SentenceValues {
     /// matches: "the Basic plan" / "the basic plan").
     pub words: BTreeSet<String>,
     pub negated: bool,
+}
+
+/// [`value_compatibility`] of two facts, with each sentence's event-time expression as written (when the sentence
+/// does not already contain it) counted as part of the sentence.
+pub fn structured_value_compatibility(
+    candidate: &str,
+    candidate_structure: &FactStructure,
+    existing: &str,
+    existing_structure: &FactStructure,
+) -> Result<(), ValueConflict> {
+    value_compatibility(
+        &with_expression(candidate, candidate_structure),
+        candidate_structure.event_time.as_ref(),
+        &with_expression(existing, existing_structure),
+        existing_structure.event_time.as_ref(),
+    )
+}
+
+fn with_expression(sentence: &str, structure: &FactStructure) -> String {
+    match structure.event_time_text.as_deref().map(str::trim) {
+        Some(expression)
+            if !expression.is_empty()
+                && !sentence.to_lowercase().contains(&expression.to_lowercase()) =>
+        {
+            format!("{sentence} ({expression})")
+        }
+        _ => sentence.to_string(),
+    }
 }
 
 /// `Ok(())` when `candidate` may be treated as a duplicate of `existing`, else the first conflict.

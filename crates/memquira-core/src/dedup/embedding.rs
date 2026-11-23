@@ -4,7 +4,7 @@ use crate::observability::{record_dedup_value_guard, record_vector_hit_rejected}
 use crate::ports::{FactStore, VectorSearchQuery, VectorSearchResult, VectorStore};
 use crate::{CandidateFact, Fact, MemoryType, TenantContext};
 
-use super::value_guard::{ValueConflict, value_compatibility};
+use super::value_guard::{ValueConflict, structured_value_compatibility};
 
 use super::types::{DeduplicationDecision, EmbeddingDeduplicationConfig};
 
@@ -96,11 +96,11 @@ pub async fn detect_embedding_duplicate_guarded(
             continue;
         }
         if let (Some(candidate), Some(existing)) = (guarded, fact.as_ref()) {
-            let conflict = value_compatibility(
+            let conflict = structured_value_compatibility(
                 &candidate.content,
-                candidate.structure.event_time.as_ref(),
+                &candidate.structure,
                 &existing.content,
-                existing.structure.event_time.as_ref(),
+                &existing.structure,
             )
             .err();
             record_dedup_value_guard(

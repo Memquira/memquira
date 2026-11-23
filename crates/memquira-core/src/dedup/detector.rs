@@ -3,7 +3,7 @@ use memquira_common::MemquiraResult;
 use crate::ports::{FactSearchQuery, FactStore};
 use crate::{CandidateFact, Fact, TenantContext};
 
-use super::value_guard::{DedupValueGuard, ValueConflict, value_compatibility};
+use super::value_guard::{DedupValueGuard, ValueConflict, structured_value_compatibility};
 use crate::observability::record_dedup_value_guard;
 
 use super::types::{
@@ -164,11 +164,11 @@ pub fn detect_duplicate_guarded(
         if overlap >= HIGH_SIMILARITY_DUPLICATE_THRESHOLD {
             // With the guard on, a value-incompatible near-duplicate is only "similar but distinct" (below).
             let conflict = if guard.is_on() {
-                let conflict = value_compatibility(
+                let conflict = structured_value_compatibility(
                     &candidate.content,
-                    candidate.structure.event_time.as_ref(),
+                    &candidate.structure,
                     &existing.content,
-                    existing.structure.event_time.as_ref(),
+                    &existing.structure,
                 )
                 .err();
                 record_dedup_value_guard(
