@@ -63,7 +63,7 @@ services:
       dockerfile: docker/Dockerfile
       args:
         CARGO_FEATURES: postgres,qdrant
-        APP_VERSION: ${APP_VERSION:-0.3.0}
+        APP_VERSION: ${APP_VERSION:-0.3.1}
         GIT_SHA: ${GIT_SHA:-unknown}
         BUILD_TIMESTAMP: ${BUILD_TIMESTAMP:-unknown}
     restart: unless-stopped

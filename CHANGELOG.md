@@ -5,6 +5,8 @@ All notable changes to this project are documented in this file. The project fol
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-23
+
 ### Added
 
 - `MEMQUIRA_PROVIDER_OPERATION_HEADER_ENABLED` (off by default) with `MEMQUIRA_PROVIDER_OPERATION_HEADER_HOSTS`:

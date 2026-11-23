@@ -2077,7 +2077,7 @@ checksum = "6b947ae49db0d222b1dbc6b113ce7248a3fc3a6ca21b696717bfc000ba4484d8"
 
 [[package]]
 name = "memquira-api"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -2110,7 +2110,7 @@ dependencies = [
 
 [[package]]
 name = "memquira-common"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "hex",
  "hmac",
@@ -2121,7 +2121,7 @@ dependencies = [
 
 [[package]]
 name = "memquira-config"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "dotenvy",
  "memquira-common",
@@ -2130,7 +2130,7 @@ dependencies = [
 
 [[package]]
 name = "memquira-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2155,7 +2155,7 @@ dependencies = [
 
 [[package]]
 name = "memquira-providers"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "async-trait",
  "aws-config",
@@ -2180,7 +2180,7 @@ dependencies = [
 
 [[package]]
 name = "memquira-storage"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "async-trait",
  "chrono",
