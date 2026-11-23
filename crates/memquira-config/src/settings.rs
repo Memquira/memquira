@@ -186,6 +186,9 @@ const MEMQUIRA_REAL_PROVIDER_CALLS_ENABLED: &str = "MEMQUIRA_REAL_PROVIDER_CALLS
 const MEMQUIRA_PROVIDER_TEST_MODE: &str = "MEMQUIRA_PROVIDER_TEST_MODE";
 const MEMQUIRA_PROVIDER_MAX_CALLS_PER_RUN: &str = "MEMQUIRA_PROVIDER_MAX_CALLS_PER_RUN";
 const MEMQUIRA_PROVIDER_MAX_INPUT_CHARS: &str = "MEMQUIRA_PROVIDER_MAX_INPUT_CHARS";
+const MEMQUIRA_PROVIDER_OPERATION_HEADER_ENABLED: &str =
+    "MEMQUIRA_PROVIDER_OPERATION_HEADER_ENABLED";
+const MEMQUIRA_PROVIDER_OPERATION_HEADER_HOSTS: &str = "MEMQUIRA_PROVIDER_OPERATION_HEADER_HOSTS";
 const MEMQUIRA_PROVIDER_MAX_OUTPUT_TOKENS: &str = "MEMQUIRA_PROVIDER_MAX_OUTPUT_TOKENS";
 const MEMQUIRA_EXTRACTION_MAX_OUTPUT_TOKENS: &str = "MEMQUIRA_EXTRACTION_MAX_OUTPUT_TOKENS";
 const MEMQUIRA_CLASSIFICATION_MAX_OUTPUT_TOKENS: &str = "MEMQUIRA_CLASSIFICATION_MAX_OUTPUT_TOKENS";
@@ -1256,6 +1259,13 @@ pub struct Settings {
     pub provider_cost_tracking_enabled: bool,
     /// Persist provider usage events to the configured database store.
     pub provider_usage_persistence_enabled: bool,
+    /// Forward a request's `X-Memquira-Operation` token on its OpenAI-compatible provider calls, for a trusted
+    /// provider-side proxy that charges each call to the caller's operation. Off by default.
+    pub provider_operation_header_enabled: bool,
+    /// Hosts (`host` or `host:port`) of the trusted proxy that may receive the token
+    /// (`MEMQUIRA_PROVIDER_OPERATION_HEADER_HOSTS`); required when forwarding is enabled. No other provider URL ever
+    /// receives it.
+    pub provider_operation_header_hosts: Vec<String>,
     /// Default provider usage event retention window in days (`0` disables cleanup).
     pub provider_usage_retention_days: u32,
     /// Global organization quota enforcement toggle.
@@ -1724,6 +1734,8 @@ impl Default for Settings {
             provider_usage_metrics_enabled: true,
             provider_cost_tracking_enabled: false,
             provider_usage_persistence_enabled: false,
+            provider_operation_header_enabled: false,
+            provider_operation_header_hosts: Vec::new(),
             provider_usage_retention_days: 180,
             quotas_enabled: false,
             max_users_per_org: 0,
@@ -2398,6 +2410,14 @@ impl Settings {
             MEMQUIRA_PROVIDER_USAGE_PERSISTENCE_ENABLED,
             defaults.provider_usage_persistence_enabled,
         )?;
+        let provider_operation_header_enabled = parse_bool(
+            MEMQUIRA_PROVIDER_OPERATION_HEADER_ENABLED,
+            defaults.provider_operation_header_enabled,
+        )?;
+        let provider_operation_header_hosts = parse_string_list(
+            MEMQUIRA_PROVIDER_OPERATION_HEADER_HOSTS,
+            &defaults.provider_operation_header_hosts,
+        );
         let provider_usage_retention_days = parse_u32(
             MEMQUIRA_PROVIDER_USAGE_RETENTION_DAYS,
             defaults.provider_usage_retention_days,
@@ -2711,6 +2731,8 @@ impl Settings {
             provider_usage_metrics_enabled,
             provider_cost_tracking_enabled,
             provider_usage_persistence_enabled,
+            provider_operation_header_enabled,
+            provider_operation_header_hosts,
             provider_usage_retention_days,
             quotas_enabled,
             max_users_per_org,
@@ -3511,6 +3533,25 @@ impl Settings {
         if self.provider_max_input_chars == 0 {
             return Err(MemquiraError::ValidationError(
                 "MEMQUIRA_PROVIDER_MAX_INPUT_CHARS must be greater than 0".to_string(),
+            ));
+        }
+        if self.provider_operation_header_enabled && self.provider_operation_header_hosts.is_empty()
+        {
+            return Err(MemquiraError::ValidationError(
+                "MEMQUIRA_PROVIDER_OPERATION_HEADER_ENABLED=true requires MEMQUIRA_PROVIDER_OPERATION_HEADER_HOSTS \
+                 (the trusted proxy's host or host:port); the token is never sent to other provider URLs"
+                    .to_string(),
+            ));
+        }
+        if self
+            .provider_operation_header_hosts
+            .iter()
+            .any(|h| h.contains(['*', '/', '@', ' ']))
+        {
+            return Err(MemquiraError::ValidationError(
+                "MEMQUIRA_PROVIDER_OPERATION_HEADER_HOSTS entries are exact host or host:port values (no wildcards, \
+                 paths or credentials)"
+                    .to_string(),
             ));
         }
         if self.provider_max_output_tokens == 0 {
@@ -4709,6 +4750,8 @@ mod tests {
         "MEMQUIRA_PROVIDER_USAGE_METRICS_ENABLED",
         "MEMQUIRA_PROVIDER_COST_TRACKING_ENABLED",
         "MEMQUIRA_PROVIDER_USAGE_PERSISTENCE_ENABLED",
+        "MEMQUIRA_PROVIDER_OPERATION_HEADER_ENABLED",
+        "MEMQUIRA_PROVIDER_OPERATION_HEADER_HOSTS",
         "MEMQUIRA_PROVIDER_USAGE_RETENTION_DAYS",
         "MEMQUIRA_QUOTAS_ENABLED",
         "MEMQUIRA_MAX_USERS_PER_ORG",
@@ -8409,6 +8452,55 @@ mod tests {
         let error = Settings::from_env().expect_err("invalid test mode should fail");
         assert_eq!(error.code(), "validation_error");
         assert!(error.to_string().contains("MEMQUIRA_PROVIDER_TEST_MODE"));
+    }
+
+    #[test]
+    fn operation_header_forwarding_needs_an_exact_host_allow_list() {
+        let mut settings = Settings::default();
+        assert!(settings.validate().is_ok());
+        assert!(!settings.provider_operation_header_enabled);
+        settings.provider_operation_header_enabled = true;
+        let error = settings
+            .validate()
+            .expect_err("enabled without hosts must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("MEMQUIRA_PROVIDER_OPERATION_HEADER_HOSTS")
+        );
+        settings.provider_operation_header_hosts = vec!["vertex-adapter:8790".to_string()];
+        assert!(settings.validate().is_ok());
+        for bad in [
+            "*.internal",
+            "vertex-adapter/v1",
+            "user@vertex-adapter",
+            "vertex adapter",
+        ] {
+            settings.provider_operation_header_hosts = vec![bad.to_string()];
+            assert!(settings.validate().is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn operation_header_hosts_are_read_from_the_environment() {
+        let _lock = env_test_lock()
+            .lock()
+            .expect("env test lock should not be poisoned");
+        let _guard = EnvGuard::new();
+        clear_env();
+        unsafe {
+            std::env::set_var("MEMQUIRA_PROVIDER_OPERATION_HEADER_ENABLED", "true");
+            std::env::set_var(
+                "MEMQUIRA_PROVIDER_OPERATION_HEADER_HOSTS",
+                " vertex-adapter:8790 , localhost ",
+            );
+        }
+        let settings = Settings::from_env().expect("valid settings");
+        assert!(settings.provider_operation_header_enabled);
+        assert_eq!(
+            settings.provider_operation_header_hosts,
+            vec!["vertex-adapter:8790".to_string(), "localhost".to_string()]
+        );
     }
 
     #[test]

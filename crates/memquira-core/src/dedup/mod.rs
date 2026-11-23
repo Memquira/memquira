@@ -16,5 +16,6 @@ pub use types::{
     MODERATE_SIMILARITY_THRESHOLD,
 };
 pub use value_guard::{
-    DedupValueGuard, SentenceValues, ValueConflict, sentence_values, value_compatibility,
+    DedupValueGuard, SentenceValues, ValueConflict, sentence_values,
+    structured_value_compatibility, value_compatibility,
 };

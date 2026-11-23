@@ -39,6 +39,10 @@ pub struct OpenAiClient {
     /// `None`: a server that needs no authentication (no `Authorization` header is sent).
     api_key: Option<String>,
     base_url: String,
+    /// Send the serving request's operation token (see `crate::operation`); set only for an allowed internal host.
+    forward_operation: bool,
+    /// The HTTP client's timeout, kept so the client can be rebuilt without redirects.
+    timeout: Duration,
 }
 
 impl std::fmt::Debug for OpenAiClient {
@@ -46,6 +50,7 @@ impl std::fmt::Debug for OpenAiClient {
         f.debug_struct("OpenAiClient")
             .field("base_url", &self.base_url)
             .field("api_key", &self.api_key.as_ref().map(|_| "[redacted]"))
+            .field("forward_operation", &self.forward_operation)
             .finish()
     }
 }
@@ -81,18 +86,52 @@ impl OpenAiClient {
             .map(|key| key.trim().to_string())
             .filter(|key| !key.is_empty());
         let base_url = normalize_base_url(base_url.into());
-        let http = Client::builder()
-            .timeout(http_timeout(provider_timeout))
-            .build()
-            .map_err(|err| {
-                MemquiraError::Internal(format!("failed to build OpenAI HTTP client: {err}"))
-            })?;
+        let timeout = http_timeout(provider_timeout);
+        let http = Client::builder().timeout(timeout).build().map_err(|err| {
+            MemquiraError::Internal(format!("failed to build OpenAI HTTP client: {err}"))
+        })?;
 
         Ok(Self {
             http,
             api_key,
             base_url,
+            forward_operation: false,
+            timeout,
         })
+    }
+
+    /// Forward the serving request's operation token on this client's calls, only if `allowed_hosts` lists its
+    /// base URL's host (`crate::operation::forwarding_allowed`). A forwarding client follows no redirects: reqwest
+    /// keeps custom headers across a redirect, so a redirect could carry the token to another host. A client that
+    /// does not forward keeps the default redirect behaviour.
+    pub fn with_operation_forwarding(mut self, enabled: bool, allowed_hosts: &[String]) -> Self {
+        let forward =
+            enabled && crate::operation::forwarding_allowed(&self.base_url, allowed_hosts);
+        if forward {
+            match Client::builder()
+                .timeout(self.timeout)
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+            {
+                Ok(http) => {
+                    self.http = http;
+                    self.forward_operation = true;
+                }
+                // Fail closed: without a client that refuses redirects, the token is not forwarded.
+                Err(err) => tracing::warn!(
+                    event = "provider_operation_forwarding_disabled",
+                    error = %err,
+                    "could not build a redirect-free HTTP client; operation tokens are not forwarded"
+                ),
+            }
+        } else {
+            self.forward_operation = false;
+        }
+        self
+    }
+
+    pub fn forwards_operation(&self) -> bool {
+        self.forward_operation
     }
 
     pub fn base_url(&self) -> &str {
@@ -182,6 +221,13 @@ impl OpenAiClient {
         let mut request = self.http.post(&url).json(body);
         if let Some(key) = &self.api_key {
             request = request.bearer_auth(key);
+        }
+        // The serving request's operation token, for provider-side cost attribution: only on a client for an allowed
+        // internal host, and only while a request with a token is served (scoped only when enabled).
+        if self.forward_operation
+            && let Some(token) = crate::operation::current_operation_token()
+        {
+            request = request.header(crate::operation::OPERATION_HEADER, token);
         }
         let response = request
             .send()

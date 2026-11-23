@@ -19,37 +19,10 @@ pub fn parse_memory_type_label(value: &str) -> MemquiraResult<MemoryType> {
     MemoryType::parse_label(value)
 }
 
-/// Parses fact operation labels from model JSON (PascalCase or snake_case).
+/// Parses fact operation labels from model JSON in any casing and separator style (`ADD`, `add`, `Add`, `NoOp`,
+/// `NO_OP`, ...). Delegates to `FactOperation::parse_label`, the same normalization as memory types.
 pub fn parse_fact_operation_label(value: &str) -> MemquiraResult<FactOperation> {
-    let normalized = value.trim().replace(' ', "_");
-    let snake = to_snake_case(&normalized);
-
-    match snake.as_str() {
-        "add" => Ok(FactOperation::Add),
-        "update" => Ok(FactOperation::Update),
-        "delete" => Ok(FactOperation::Delete),
-        "no_op" | "noop" => Ok(FactOperation::NoOp),
-        "archive" => Ok(FactOperation::Archive),
-        "summarize" => Ok(FactOperation::Summarize),
-        _ => Err(MemquiraError::ValidationError(format!(
-            "invalid operation from model: {value}"
-        ))),
-    }
-}
-
-fn to_snake_case(value: &str) -> String {
-    let mut out = String::new();
-    for (index, ch) in value.chars().enumerate() {
-        if ch.is_ascii_uppercase() {
-            if index > 0 {
-                out.push('_');
-            }
-            out.push(ch.to_ascii_lowercase());
-        } else {
-            out.push(ch);
-        }
-    }
-    out
+    FactOperation::parse_label(value)
 }
 
 #[derive(Debug, Deserialize)]
@@ -396,6 +369,22 @@ fn loggable_valid_at(value: &Value) -> String {
     }
 }
 
+/// A label of at most 32 characters of letters, digits, space, `_` or `-` is logged as written; anything else
+/// (possibly model text) as `<withheld: N chars>`.
+fn loggable_label(value: &str) -> String {
+    let trimmed = value.trim();
+    if !trimmed.is_empty()
+        && trimmed.chars().count() <= 32
+        && trimmed
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, ' ' | '_' | '-'))
+    {
+        trimmed.to_string()
+    } else {
+        format!("<withheld: {} chars>", value.chars().count())
+    }
+}
+
 fn clamp_unit_interval(value: f32) -> f32 {
     if !value.is_finite() {
         return 0.0;
@@ -419,8 +408,16 @@ pub fn parse_classification_response(text: &str) -> MemquiraResult<FactOperation
     let parsed: ClassificationModelResponse =
         serde_json::from_str(text).map_err(|_| invalid("invalid_json"))?;
 
-    let operation =
-        parse_fact_operation_label(&parsed.operation).map_err(|_| invalid("invalid_operation"))?;
+    let operation = parse_fact_operation_label(&parsed.operation).map_err(|_| {
+        // Name an unrecognized label so a new model spelling is visible, not silent; anything that does not look
+        // like a label (model text) is withheld, only its length logged. Logs only, never a metric label.
+        tracing::warn!(
+            event = "classification_operation_unrecognized",
+            label = %loggable_label(&parsed.operation),
+            "model classification used an unrecognized operation label"
+        );
+        invalid("invalid_operation")
+    })?;
     let target_fact_id = match parsed.target_fact_id {
         Some(id) if !id.trim().is_empty() => match Uuid::from_str(id.trim()) {
             Ok(id) => Some(id),
@@ -484,6 +481,87 @@ pub fn extract_output_text(response: &ResponsesCreateResponse) -> MemquiraResult
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unrecognized_labels_are_logged_only_when_they_look_like_labels() {
+        assert_eq!(loggable_label(" MERGE "), "MERGE");
+        assert_eq!(loggable_label("ADD_OR_UPDATE"), "ADD_OR_UPDATE");
+        assert_eq!(
+            loggable_label("my sister lives at 4 Elm Street, call her"),
+            "<withheld: 41 chars>"
+        );
+        assert_eq!(
+            loggable_label("x".repeat(33).as_str()),
+            "<withheld: 33 chars>"
+        );
+        assert_eq!(loggable_label(""), "<withheld: 0 chars>");
+        assert_eq!(loggable_label("a\nb"), "<withheld: 3 chars>");
+    }
+
+    /// Gemini answered `Add`, `add` and `ADD` in one run; `ADD` used to be read as `a_d_d` and the candidate was
+    /// discarded. Every spelling of every operation now reaches the same decision, with its target.
+    #[test]
+    fn classification_operations_parse_in_any_case() {
+        let id = Uuid::new_v4();
+        for (labels, want, target) in [
+            (
+                &["Add", "add", "ADD", "aDd", " Add "][..],
+                FactOperation::Add,
+                false,
+            ),
+            (
+                &["Update", "update", "UPDATE", "uPdAtE"][..],
+                FactOperation::Update,
+                true,
+            ),
+            (
+                &["Delete", "delete", "DELETE"][..],
+                FactOperation::Delete,
+                true,
+            ),
+            (
+                &["NoOp", "noop", "NOOP", "NO_OP", "no_op", "no-op", "No Op"][..],
+                FactOperation::NoOp,
+                false,
+            ),
+            (&["Archive", "ARCHIVE"][..], FactOperation::Archive, true),
+            (
+                &["Summarize", "SUMMARIZE"][..],
+                FactOperation::Summarize,
+                true,
+            ),
+        ] {
+            for label in labels {
+                let target_json = if target {
+                    format!("\"{id}\"")
+                } else {
+                    "null".to_string()
+                };
+                let text = format!(
+                    r#"{{"operation":"{label}","target_fact_id":{target_json},"reason":"r","confidence":0.9}}"#
+                );
+                let decision = parse_classification_response(&text)
+                    .unwrap_or_else(|e| panic!("{label:?}: {e:?}"));
+                assert_eq!(decision.operation, want, "{label:?}");
+                assert_eq!(decision.target_fact_id, target.then_some(id), "{label:?}");
+            }
+        }
+        for unknown in ["Merge", "ADD_OR_UPDATE", "Invalidate", "", "add!"] {
+            let text = format!(
+                r#"{{"operation":"{unknown}","target_fact_id":null,"reason":"r","confidence":0.9}}"#
+            );
+            assert!(
+                matches!(
+                    parse_classification_response(&text),
+                    Err(MemquiraError::ProviderOutputInvalid {
+                        reason: "invalid_operation",
+                        ..
+                    })
+                ),
+                "{unknown:?}"
+            );
+        }
+    }
 
     /// A non-UUID target on an Add is dropped (Add never uses it); on any other
     /// operation it is still an error; a valid UUID is kept exactly as before.

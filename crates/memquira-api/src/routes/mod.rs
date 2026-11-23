@@ -7,7 +7,7 @@ use utoipa::OpenApi;
 use crate::metrics::{metrics_handler, require_metrics_auth};
 use crate::middleware::{
     apply_security_headers, build_cors_layer, enforce_json_content_type, enforce_rate_limit,
-    enforce_request_body_limit, require_api_key, require_organization,
+    enforce_request_body_limit, forward_operation_token, require_api_key, require_organization,
 };
 use crate::observability::{log_protected_request, observe_request_lifecycle};
 use crate::openapi::ApiDoc;
@@ -29,7 +29,7 @@ pub mod users;
 
 /// Protected routes middleware order (incoming request):
 /// `observe_request_lifecycle` → `require_api_key` → `require_organization` →
-/// `enforce_rate_limit` → `log_protected_request` → `enforce_admission` → handler.
+/// `enforce_rate_limit` → `log_protected_request` → `enforce_admission` → `forward_operation_token` → handler.
 ///
 /// Global middleware order (incoming request):
 /// request ID / tracing → security headers → CORS (optional) → body limit →
@@ -148,6 +148,8 @@ pub fn router(state: &AppState) -> Router<AppState> {
             "/api/v1/admin/providers/guardrails",
             get(admin::get_provider_guardrails),
         )
+        // The caller's operation token over the handler (provider-side cost attribution; off by default).
+        .route_layer(from_fn_with_state(state.clone(), forward_operation_token))
         // Admission control, after auth, tenant and rate limiting.
         .route_layer(from_fn_with_state(
             state.clone(),

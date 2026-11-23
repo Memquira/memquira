@@ -5,6 +5,33 @@ All notable changes to this project are documented in this file. The project fol
 
 ## [Unreleased]
 
+### Added
+
+- `MEMQUIRA_PROVIDER_OPERATION_HEADER_ENABLED` (off by default) with `MEMQUIRA_PROVIDER_OPERATION_HEADER_HOSTS`:
+  forwards a request's `X-Memquira-Operation` token on every OpenAI-compatible provider call made while serving it,
+  retries included, so a trusted provider-side proxy can charge each call to the caller's operation. Only providers
+  on the listed hosts receive it, and such clients follow no redirects; invalid tokens are refused with 400; calls
+  outside a request carry none.
+- `memcore_ingest_candidates_rejected_total{reason="invalid_classification"}`: candidates rejected because the
+  model's classification was invalid (also reported in the write summary).
+
+### Fixed
+
+- Fact classification accepted the operation names `Add`, `add` and `NoOp` but discarded the candidate when a model
+  wrote them in capitals (`ADD`, `UPDATE`, `NOOP`): the label was read as `a_d_d`. Operation labels are now matched
+  case-insensitively, ignoring surrounding whitespace and the separators space, `_` and `-`. An unrecognized label
+  is still rejected, counted as `invalid_classification` in the write summary and now logged by name (only when it
+  looks like a label; other model text is withheld).
+- With `MEMQUIRA_DEDUP_VALUE_GUARD=on`, a rescheduled date that exists only in the event-time expression (no message
+  or session time to settle it) was treated as a duplicate or a classifier NoOp and lost. The expression now counts
+  as part of the sentence, and under `MEMQUIRA_RELATED_FACT_MATCHER=semantic_v23` a classifier NoOp is not honoured
+  when the candidate differs from every offered fact only in its event time or expression (which the classifier does
+  not see).
+
+### Security
+
+- `url` 2.5.9 (RUSTSEC-2026-0592: stack overflow in `Url::origin()` on nested `blob:` URLs). Lockfile only.
+
 ## [0.3.0] - 2026-11-20
 
 ### Changed

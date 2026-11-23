@@ -879,7 +879,12 @@ fn build_llm_provider_by_name(
                 &endpoint.base_url,
                 Some(Duration::from_secs(settings.provider_timeout_seconds)),
             )
-            .map_err(|err| provider_init_error("OpenAI LLM", err))?;
+            .map_err(|err| provider_init_error("OpenAI LLM", err))?
+            .with_operation_forwarding(
+                settings.provider_operation_header_enabled,
+                &settings.provider_operation_header_hosts,
+            );
+            log_operation_forwarding("llm", settings, client.forwards_operation());
             Ok(Arc::new(
                 OpenAiLlmProvider::for_base_url(client, settings.llm_model.clone())
                     .with_json_mode(match settings.providers.llm_json_mode {
@@ -936,7 +941,12 @@ fn build_embedding_provider_by_name(
                 &endpoint.base_url,
                 Some(Duration::from_secs(settings.provider_timeout_seconds)),
             )
-            .map_err(|err| provider_init_error("OpenAI embedding", err))?;
+            .map_err(|err| provider_init_error("OpenAI embedding", err))?
+            .with_operation_forwarding(
+                settings.provider_operation_header_enabled,
+                &settings.provider_operation_header_hosts,
+            );
+            log_operation_forwarding("embedding", settings, client.forwards_operation());
             let options = &settings.providers.embedding_options;
             let dimensions = options.dimensions.unwrap_or_else(|| {
                 default_embedding_dimensions_for_model(&settings.embedding_model)
@@ -2272,6 +2282,28 @@ async fn create_vector_store_named(
                 ))
             }
         }
+    }
+}
+
+/// Startup record of operation-token forwarding per provider role (never the token itself).
+fn log_operation_forwarding(role: &str, settings: &Settings, forwarding: bool) {
+    if !settings.provider_operation_header_enabled {
+        return;
+    }
+    if forwarding {
+        tracing::info!(
+            event = "provider_operation_forwarding",
+            role,
+            forwarding,
+            "operation tokens are forwarded to this provider"
+        );
+    } else {
+        tracing::warn!(
+            event = "provider_operation_forwarding",
+            role,
+            forwarding,
+            "operation-token forwarding is enabled but this provider's host is not in MEMQUIRA_PROVIDER_OPERATION_HEADER_HOSTS: no token is sent to it"
+        );
     }
 }
 

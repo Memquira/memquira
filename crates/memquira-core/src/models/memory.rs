@@ -160,6 +160,49 @@ pub enum FactOperation {
     Summarize,
 }
 
+impl FactOperation {
+    pub const ALL: &'static [Self] = &[
+        Self::Add,
+        Self::Update,
+        Self::Delete,
+        Self::NoOp,
+        Self::Archive,
+        Self::Summarize,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Add => "add",
+            Self::Update => "update",
+            Self::Delete => "delete",
+            Self::NoOp => "no_op",
+            Self::Archive => "archive",
+            Self::Summarize => "summarize",
+        }
+    }
+
+    /// Parses an operation label written by a model: case-insensitive, ignoring surrounding whitespace and the
+    /// separators space, `_` and `-`, so `ADD`, `add`, `Add`, `aDd`, `NoOp`, `NOOP`, `NO_OP` and `no-op` all resolve.
+    /// The six names stay distinct after this. (Splitting every capital into a word used to turn `ADD` into `a_d_d`,
+    /// and the candidate was discarded.) Any other text, including other punctuation, is an error the caller must
+    /// report.
+    pub fn parse_label(value: &str) -> MemquiraResult<Self> {
+        let compact: String = value
+            .trim()
+            .chars()
+            .filter(|ch| !matches!(ch, ' ' | '_' | '-'))
+            .map(|ch| ch.to_ascii_lowercase())
+            .collect();
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|candidate| candidate.as_str().replace('_', "") == compact)
+            .ok_or_else(|| {
+                MemquiraError::ValidationError(format!("invalid operation from model: {value}"))
+            })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -208,6 +251,68 @@ mod tests {
         ] {
             MemoryType::parse_label(label)
                 .unwrap_or_else(|_| panic!("prompt vocabulary label {label} should parse"));
+        }
+    }
+
+    #[test]
+    fn fact_operation_labels_resolve_in_any_case_and_separator_style() {
+        let cases: &[(&str, FactOperation)] = &[
+            ("Add", FactOperation::Add),
+            ("add", FactOperation::Add),
+            ("ADD", FactOperation::Add),
+            ("aDd", FactOperation::Add),
+            ("  Add\n", FactOperation::Add),
+            ("aDD", FactOperation::Add),
+            ("a_d_d", FactOperation::Add),
+            ("Update", FactOperation::Update),
+            ("uPdAtE", FactOperation::Update),
+            ("UPDATE", FactOperation::Update),
+            ("update", FactOperation::Update),
+            ("Delete", FactOperation::Delete),
+            ("DELETE", FactOperation::Delete),
+            ("delete", FactOperation::Delete),
+            ("NoOp", FactOperation::NoOp),
+            ("noOp", FactOperation::NoOp),
+            ("NOOP", FactOperation::NoOp),
+            ("noop", FactOperation::NoOp),
+            ("NO_OP", FactOperation::NoOp),
+            ("no_op", FactOperation::NoOp),
+            ("no-op", FactOperation::NoOp),
+            ("No Op", FactOperation::NoOp),
+            ("Archive", FactOperation::Archive),
+            ("ARCHIVE", FactOperation::Archive),
+            ("Summarize", FactOperation::Summarize),
+            ("SUMMARIZE", FactOperation::Summarize),
+        ];
+        for (label, expected) in cases {
+            assert_eq!(
+                FactOperation::parse_label(label).unwrap(),
+                *expected,
+                "{label:?}"
+            );
+        }
+        for operation in FactOperation::ALL {
+            // Every operation's own label and its serde label parse back to it.
+            assert_eq!(
+                FactOperation::parse_label(operation.as_str()).unwrap(),
+                *operation
+            );
+            let encoded = serde_json::to_string(operation).expect("serialize");
+            assert_eq!(encoded, format!("\"{}\"", operation.as_str()));
+        }
+        for unknown in [
+            "",
+            "  ",
+            "Merge",
+            "ADD_OR_UPDATE",
+            "Invalidate",
+            "add!",
+            "add.",
+            "adds",
+            "Prefer Add",
+            "ADD OR UPDATE",
+        ] {
+            assert!(FactOperation::parse_label(unknown).is_err(), "{unknown:?}");
         }
     }
 

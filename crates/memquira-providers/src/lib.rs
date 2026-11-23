@@ -5,6 +5,7 @@ pub mod inputs;
 pub mod local_embedding;
 pub mod mocks;
 pub mod openai;
+pub mod operation;
 pub mod policy;
 pub mod prompts;
 mod redaction;
