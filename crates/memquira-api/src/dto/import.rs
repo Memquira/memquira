@@ -48,7 +48,10 @@ pub struct ImportUserDataSummaryResponse {
     /// manifest. A consistency check, not proof of source completeness (the manifest is not
     /// signed). Legacy and truncated archives are always false.
     pub manifest_consistent: bool,
+    /// Fact rows written, deleted ones included.
     pub imported_facts: usize,
+    /// Of `imported_facts`, the facts stored deleted (never active, never indexed).
+    pub imported_deleted_facts: usize,
     pub imported_events: usize,
     pub skipped_facts: usize,
     pub replaced_existing: bool,
@@ -57,7 +60,8 @@ pub struct ImportUserDataSummaryResponse {
     /// Present only when the export carried episodes (v2).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub imported_episodes: Option<usize>,
-    /// Episodes not imported because episodes are disabled on this server.
+    /// Episodes not imported: all of them when episodes are disabled on this server, otherwise
+    /// the messages of deleted memories that this import does not store deleted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skipped_episodes: Option<usize>,
     /// Present only when the export carried entities (v3).
@@ -107,6 +111,7 @@ impl From<ImportUserDataOutput> for ImportUserDataSummaryResponse {
         Self {
             manifest_consistent: output.manifest_consistent,
             imported_facts: output.imported_facts,
+            imported_deleted_facts: output.imported_deleted_facts,
             imported_events: output.imported_events,
             skipped_facts: output.skipped_facts,
             replaced_existing: output.replaced_existing,
@@ -151,6 +156,7 @@ mod tests {
         let response = ImportUserDataResponse::from(ImportUserDataOutput {
             manifest_consistent: false,
             imported_facts: 2,
+            imported_deleted_facts: 0,
             imported_events: 1,
             skipped_facts: 0,
             replaced_existing: false,

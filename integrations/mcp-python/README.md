@@ -28,13 +28,33 @@ The assistant gets five tools. It decides when to call them; nothing is collecte
 **Status: preview.** The package is not on PyPI yet. Until it is, install it from a checkout of this repository
 ([Install](#install)). The commands that will work after publication are marked as such.
 
+## Client support
+
+Two different things are checked:
+
+- **MCP client compatibility (automated):** the client's MCP layer starts the server, lists the five tools and runs
+  tool calls correctly. This is tested without a model.
+- **Interactive use:** in a real session, the client's model chooses the tools, follows the server instructions and
+  works with the client's approval settings. This needs a person, a signed-in client and model calls.
+
+| Client | MCP client compatibility | Interactive use |
+|---|---|---|
+| Claude Code | The protocol is tested with the official MCP client; Claude Code's own client was used in the real sessions | Verified in real sessions (Claude Code 2.1) |
+| Codex CLI and IDE extension | Tested: Codex's own MCP client, cross-session (`tests/test_e2e_codex.py`, codex-cli 0.172) | Not yet verified |
+| Cursor | The protocol is tested with the official MCP client; Cursor's own client is not | Not yet verified |
+| Other stdio MCP clients | The protocol is tested with the official MCP client | Not verified |
+
+"Not yet verified" means no claim is made about how that client's model uses the tools. Please report what you see.
+
 ## Contents
 
+- [Client support](#client-support)
 - [Install](#install)
 - [Connect to a self-hosted Memquira](#connect-to-a-self-hosted-memquira)
 - [Connect to the hosted developer preview](#connect-to-the-hosted-developer-preview)
 - [Claude Code](#claude-code)
 - [Cursor](#cursor)
+- [Codex](#codex)
 - [Other MCP clients](#other-mcp-clients)
 - [Remember across sessions: a walkthrough](#remember-across-sessions-a-walkthrough)
 - [Getting the assistant to use memory](#getting-the-assistant-to-use-memory)
@@ -211,6 +231,49 @@ it does not start.
 Cursor compatibility follows from the MCP standard (stdio, tools, structured results) but has not yet been checked
 in an interactive Cursor session; please report what you see.
 
+## Codex
+
+The Codex CLI and the Codex IDE extension read the same configuration: `~/.codex/config.toml` for all projects, or
+`.codex/config.toml` in a trusted project. Add the server there
+([examples/codex.config.toml](examples/codex.config.toml)):
+
+```toml
+[mcp_servers.memquira]
+command = "uvx"
+args = ["memquira-mcp"]
+env_vars = ["MEMQUIRA_API_KEY"]
+startup_timeout_sec = 30
+tool_timeout_sec = 90
+
+[mcp_servers.memquira.tools.delete_memory]
+approval_mode = "prompt"
+```
+
+That is the hosted configuration. For a self-hosted server, list all four variables:
+`env_vars = ["MEMQUIRA_URL", "MEMQUIRA_API_KEY", "MEMQUIRA_ORG_ID", "MEMQUIRA_USER_ID"]`.
+
+- **Credentials.** `env_vars` forwards the named variables from the environment Codex was started in, so the key
+  never appears in the file. Avoid `env = { ... }` and `codex mcp add --env`, which write values into
+  `config.toml`.
+- **Timeouts.** The first `uvx` run downloads the package, which can exceed Codex's 10-second start-up default.
+  `remember` runs a language model on the Memquira server, which can approach the 60-second tool default.
+- **Approvals.** `approval_mode = "prompt"` asks before every `delete_memory`. For a stricter setup,
+  `default_tools_approval_mode = "writes"` also asks before `remember`. The tools mark `search_memory`, `get_context`
+  and `list_memories` as read-only, and `remember` and `delete_memory` as not read-only.
+- **Instructions.** Codex reads the server's MCP instructions. Their opening paragraph is a self-contained summary
+  of the usage rules, as Codex recommends for the first 512 characters. For a project, add
+  [examples/AGENTS.md](examples/AGENTS.md) to your `AGENTS.md`.
+- **Check it.** Run `codex mcp list` or `codex mcp get memquira`, or type `/mcp` in a Codex session, to see the
+  server. Run `memquira-mcp check` first with the same variables.
+- **Codex memories.** Codex's own memories are off by default. If you turn them on, set
+  `memories.disable_on_external_context = true`. That keeps chats that used MCP tools out of Codex's local memory
+  files, so nothing Memquira recalled is copied there, where deleting a Memquira memory would not reach it.
+
+An automated acceptance test drives Codex's own MCP client (the `codex app-server` protocol, no model call). It covers
+remember, recall, list and delete across four separate Codex sessions: `tests/test_e2e_codex.py`. Whether the model
+chooses the tools in an interactive Codex session, and how Codex applies the approval settings to them, has not been
+checked yet. Please report what you see.
+
 ## Other MCP clients
 
 Any client that can launch a local stdio server works: command `uvx`, arguments `["memquira-mcp"]`, and the
@@ -248,7 +311,7 @@ short usage rules (its MCP `instructions`, repeated in the tool descriptions):
 
 Clients decide how to use these rules. For dependable behaviour, add a few lines to your project's rules file:
 [examples/CLAUDE.md](examples/CLAUDE.md) for Claude Code, [examples/memquira.mdc](examples/memquira.mdc) for Cursor
-(`.cursor/rules/`).
+(`.cursor/rules/`), [examples/AGENTS.md](examples/AGENTS.md) for Codex.
 
 Claude Code also has its own file-based memory. When both are active, say which one to use; the rules snippet above
 does that. In our tests with Claude Code 2.1, the assistant used the Memquira tools without a rules file once they were
@@ -359,7 +422,8 @@ stderr, which most clients show in their MCP logs.
 - **One identity per server process.** Multi-user setups need one configured server per user.
 - **Local stdio only.** There is no remote (HTTP) MCP endpoint yet, so web-based MCP clients that cannot start a local
   process are not supported.
-- **Cursor** has not yet been checked in an interactive session; Claude Code has.
+- **Cursor and Codex** have not yet been checked in an interactive session; Claude Code has. Codex's MCP client
+  itself is covered by an automated cross-session test.
 
 ## Development
 
@@ -373,6 +437,7 @@ ruff check . && ruff format --check . && mypy
 End-to-end tests run the real server process against a Memquira instance with mock models:
 `tests/test_e2e_engine.py` needs `MEMQUIRA_E2E_URL`, `MEMQUIRA_E2E_API_KEY`, `MEMQUIRA_E2E_ORG_ID` (and optionally
 `MEMQUIRA_E2E_ADMIN_KEY` for the scope and revocation tests); `tests/test_e2e_hosted.py` needs
-`MEMQUIRA_E2E_HOSTED_URL` and `MEMQUIRA_E2E_HOSTED_TOKEN`.
+`MEMQUIRA_E2E_HOSTED_URL` and `MEMQUIRA_E2E_HOSTED_TOKEN`; `tests/test_e2e_codex.py` needs the `MEMQUIRA_E2E_*`
+variables and `MEMQUIRA_E2E_CODEX`, the path of a `codex` executable (it calls no model).
 
 Licensed under the Apache License 2.0.

@@ -109,6 +109,8 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 pub struct MockFactStore {
     facts: RwLock<HashMap<Uuid, Fact>>,
     deleted: RwLock<HashSet<Uuid>>,
+    /// When each soft-deleted fact was deleted (as the SQL `deleted_at` column).
+    deleted_at: RwLock<HashMap<Uuid, DateTime<Utc>>>,
     /// The exact-dedup key of facts added by ingestion (as the SQL column).
     dedup_keys: RwLock<HashMap<Uuid, String>>,
 }
@@ -378,10 +380,64 @@ impl FactStore for MockFactStore {
             return Err(MemquiraError::Forbidden);
         }
 
+        if self
+            .deleted
+            .write()
+            .expect("deleted lock poisoned")
+            .insert(fact_id)
+        {
+            self.deleted_at
+                .write()
+                .expect("deleted_at lock poisoned")
+                .insert(fact_id, Utc::now());
+        }
+        Ok(())
+    }
+
+    async fn deleted_fact_times(
+        &self,
+        tenant: &TenantContext,
+        fact_ids: &[Uuid],
+    ) -> MemquiraResult<HashMap<Uuid, DateTime<Utc>>> {
+        let facts = self.facts.read().expect("facts lock poisoned");
+        let deleted = self.deleted.read().expect("deleted lock poisoned");
+        let times = self.deleted_at.read().expect("deleted_at lock poisoned");
+        Ok(fact_ids
+            .iter()
+            .filter_map(|id| {
+                let fact = facts.get(id).filter(|f| fact_matches_tenant(f, tenant))?;
+                deleted
+                    .contains(id)
+                    .then(|| (*id, times.get(id).copied().unwrap_or(fact.updated_at)))
+            })
+            .collect())
+    }
+
+    async fn insert_deleted_fact(
+        &self,
+        tenant: &TenantContext,
+        fact: Fact,
+        deleted_at: DateTime<Utc>,
+    ) -> MemquiraResult<()> {
+        ensure_fact_tenant(&fact, tenant)?;
+        let mut facts = self.facts.write().expect("facts lock poisoned");
+        if facts.contains_key(&fact.id) {
+            return Err(MemquiraError::Conflict(format!(
+                "fact already exists: {}",
+                fact.id
+            )));
+        }
+        let id = fact.id;
+        // Marked deleted before the row is visible: no reader sees it live.
         self.deleted
             .write()
             .expect("deleted lock poisoned")
-            .insert(fact_id);
+            .insert(id);
+        self.deleted_at
+            .write()
+            .expect("deleted_at lock poisoned")
+            .insert(id, deleted_at);
+        facts.insert(id, fact);
         Ok(())
     }
 
@@ -432,6 +488,10 @@ impl FactStore for MockFactStore {
         let mut deleted = self.deleted.write().expect("deleted lock poisoned");
         let remaining_ids: HashSet<Uuid> = facts.keys().copied().collect();
         deleted.retain(|id| remaining_ids.contains(id));
+        self.deleted_at
+            .write()
+            .expect("deleted_at lock poisoned")
+            .retain(|id, _| remaining_ids.contains(id));
         Ok(())
     }
 

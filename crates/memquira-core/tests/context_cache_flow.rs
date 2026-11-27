@@ -172,6 +172,8 @@ async fn dry_run_import_does_not_invalidate_cache() {
                 entities: None,
                 truncated: None,
                 completeness: None,
+                deleted_facts: Default::default(),
+                withheld_message_ids: Vec::new(),
             },
             mode: ImportMode::Append,
             restore_events: false,

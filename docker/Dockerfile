@@ -5,7 +5,7 @@
 # Examples:
 #   docker build -f docker/Dockerfile --build-arg CARGO_FEATURES=postgres -t memquira-api:postgres .
 #   docker build -f docker/Dockerfile --build-arg CARGO_FEATURES="postgres,qdrant" -t memquira-api:prod .
-#   docker build -f docker/Dockerfile --build-arg APP_VERSION=0.3.1 --build-arg GIT_SHA=abc123 -t memquira:0.3.1 .
+#   docker build -f docker/Dockerfile --build-arg APP_VERSION=0.3.2 --build-arg GIT_SHA=abc123 -t memquira:0.3.2 .
 #
 # Security notes: runtime runs as non-root `memquira`; do not bake secrets into the image.
 # See docs/security.md.

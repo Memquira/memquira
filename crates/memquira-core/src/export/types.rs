@@ -1,5 +1,8 @@
+use std::collections::BTreeMap;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{Entity, EntityRelation, Episode, Fact, FactEntityLink, MemoryEvent};
 
@@ -100,6 +103,17 @@ pub struct UserMemoryExport {
     /// Present only on an opt-in complete export (see [`ExportCompleteness`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completeness: Option<ExportCompleteness>,
+    /// The facts of `facts` that were deleted (only an `include_deleted` export has any), with
+    /// when each was deleted. An import stores them deleted: never active and never indexed.
+    /// Omitted when empty, so other exports are unchanged.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub deleted_facts: BTreeMap<Uuid, DateTime<Utc>>,
+    /// Client message ids of exported episodes that a deleted memory of the user cites, which
+    /// retrieval withholds. An import restores such an episode only when it also stores, deleted,
+    /// a fact that cites it (so the message stays withheld) and skips it otherwise. Sorted;
+    /// omitted when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub withheld_message_ids: Vec<String>,
 }
 
 impl UserMemoryExport {
@@ -120,6 +134,8 @@ impl UserMemoryExport {
             entities: None,
             truncated: None,
             completeness: None,
+            deleted_facts: BTreeMap::new(),
+            withheld_message_ids: Vec::new(),
         }
     }
 
@@ -146,6 +162,19 @@ impl UserMemoryExport {
     pub fn with_entities(mut self, entities: EntityExport) -> Self {
         self.format_version = USER_EXPORT_FORMAT_VERSION_V3.to_string();
         self.entities = Some(entities);
+        self
+    }
+
+    /// Records which exported facts are deleted and which exported messages are withheld.
+    pub fn with_deletions(
+        mut self,
+        deleted_facts: BTreeMap<Uuid, DateTime<Utc>>,
+        mut withheld_message_ids: Vec<String>,
+    ) -> Self {
+        withheld_message_ids.sort();
+        withheld_message_ids.dedup();
+        self.deleted_facts = deleted_facts;
+        self.withheld_message_ids = withheld_message_ids;
         self
     }
 }
