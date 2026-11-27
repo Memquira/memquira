@@ -20,6 +20,23 @@ fn storage_error(context: impl Into<String>, error: impl std::fmt::Display) -> M
     MemquiraError::StorageError(format!("{}: {error}", context.into()))
 }
 
+/// Message ids per deleted-provenance lookup statement (well under SQLite's variable limit).
+const PROVENANCE_LOOKUP_CHUNK: usize = 500;
+/// Compare-and-set attempts for a provenance append before it reports a conflict.
+const PROVENANCE_WRITE_ATTEMPTS: usize = 5;
+
+/// `existing` followed by the ids of `new` it does not contain yet, in order; `None` when nothing
+/// is new.
+fn merged_source_message_ids(mut existing: Vec<String>, new: &[String]) -> Option<Vec<String>> {
+    let before = existing.len();
+    for id in new {
+        if !existing.contains(id) {
+            existing.push(id.clone());
+        }
+    }
+    (existing.len() > before).then_some(existing)
+}
+
 fn ensure_fact_tenant(fact: &Fact, tenant: &TenantContext) -> MemquiraResult<()> {
     if fact.org_id == tenant.org_id && fact.user_id == tenant.user_id {
         Ok(())
@@ -568,6 +585,99 @@ impl FactStore for SqliteFactStore {
         }
 
         Ok(())
+    }
+
+    async fn message_ids_cited_by_deleted_facts(
+        &self,
+        tenant: &TenantContext,
+        message_ids: &[String],
+    ) -> MemquiraResult<std::collections::HashSet<String>> {
+        let mut cited = std::collections::HashSet::new();
+        for chunk in message_ids.chunks(PROVENANCE_LOOKUP_CHUNK) {
+            let mut builder = QueryBuilder::<Sqlite>::new(
+                "SELECT DISTINCT j.value AS message_id FROM facts f, json_each(CASE WHEN json_valid(f.source_message_ids) THEN f.source_message_ids ELSE '[]' END) j WHERE f.org_id = ",
+            );
+            builder
+                .push_bind(&tenant.org_id)
+                .push(" AND f.user_id = ")
+                .push_bind(&tenant.user_id)
+                .push(
+                    " AND f.deleted_at IS NOT NULL AND f.source_message_ids IS NOT NULL \
+                     AND j.type = 'text' AND j.value IN (",
+                );
+            let mut separated = builder.separated(", ");
+            for id in chunk {
+                separated.push_bind(id);
+            }
+            builder.push(")");
+            let rows = builder
+                .build()
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|error| storage_error("failed to read deleted fact provenance", error))?;
+            for row in rows {
+                cited.insert(
+                    row.try_get::<String, _>("message_id")
+                        .map_err(|error| storage_error("row message_id", error))?,
+                );
+            }
+        }
+        Ok(cited)
+    }
+
+    async fn add_fact_source_message_ids(
+        &self,
+        tenant: &TenantContext,
+        fact_id: Uuid,
+        message_ids: &[String],
+    ) -> MemquiraResult<()> {
+        // Compare-and-set on the column, so a concurrent provenance write is retried, not lost.
+        for _ in 0..PROVENANCE_WRITE_ATTEMPTS {
+            let row = sqlx::query(
+                "SELECT source_message_ids FROM facts WHERE id = ? AND org_id = ? AND user_id = ? AND deleted_at IS NULL",
+            )
+            .bind(fact_id.to_string())
+            .bind(&tenant.org_id)
+            .bind(&tenant.user_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|error| storage_error("failed to read fact provenance", error))?;
+            let Some(row) = row else {
+                return Ok(());
+            };
+            let current: Option<String> = row
+                .try_get("source_message_ids")
+                .map_err(|error| storage_error("row source_message_ids", error))?;
+            let existing: Vec<String> = match &current {
+                Some(text) => serde_json::from_str(text).map_err(|error| {
+                    MemquiraError::StorageError(format!("invalid source_message_ids: {error}"))
+                })?,
+                None => Vec::new(),
+            };
+            let Some(merged) = merged_source_message_ids(existing, message_ids) else {
+                return Ok(());
+            };
+            let encoded = serde_json::to_string(&merged).map_err(|error| {
+                MemquiraError::StorageError(format!("failed to encode source_message_ids: {error}"))
+            })?;
+            let result = sqlx::query(
+                "UPDATE facts SET source_message_ids = ? WHERE id = ? AND org_id = ? AND user_id = ? AND deleted_at IS NULL AND source_message_ids IS ?",
+            )
+            .bind(encoded)
+            .bind(fact_id.to_string())
+            .bind(&tenant.org_id)
+            .bind(&tenant.user_id)
+            .bind(current)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| storage_error("failed to update fact provenance", error))?;
+            if result.rows_affected() == 1 {
+                return Ok(());
+            }
+        }
+        Err(MemquiraError::Conflict(
+            "the memory's provenance changed concurrently; retry the request".to_string(),
+        ))
     }
 
     async fn delete_user_data(&self, tenant: &TenantContext) -> MemquiraResult<()> {

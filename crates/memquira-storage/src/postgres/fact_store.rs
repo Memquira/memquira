@@ -23,6 +23,9 @@ fn storage_error(context: impl Into<String>, error: impl std::fmt::Display) -> M
     MemquiraError::StorageError(format!("{}: {error}", context.into()))
 }
 
+/// Compare-and-set attempts for a provenance append before it reports a conflict.
+const PROVENANCE_WRITE_ATTEMPTS: usize = 5;
+
 fn ensure_fact_tenant(fact: &Fact, tenant: &TenantContext) -> MemquiraResult<()> {
     if fact.org_id == tenant.org_id && fact.user_id == tenant.user_id {
         Ok(())
@@ -582,6 +585,93 @@ impl FactStore for PostgresFactStore {
         }
 
         Ok(())
+    }
+
+    async fn message_ids_cited_by_deleted_facts(
+        &self,
+        tenant: &TenantContext,
+        message_ids: &[String],
+    ) -> MemquiraResult<std::collections::HashSet<String>> {
+        if message_ids.is_empty() {
+            return Ok(std::collections::HashSet::new());
+        }
+        let rows = sqlx::query(
+            "SELECT DISTINCT j.value AS message_id FROM facts f \
+             CROSS JOIN LATERAL jsonb_array_elements_text(CASE WHEN jsonb_typeof(f.source_message_ids) = 'array' THEN f.source_message_ids ELSE '[]'::jsonb END) AS j(value) \
+             WHERE f.org_id = $1 AND f.user_id = $2 AND f.deleted_at IS NOT NULL \
+             AND f.source_message_ids IS NOT NULL AND j.value = ANY($3)",
+        )
+        .bind(&tenant.org_id)
+        .bind(&tenant.user_id)
+        .bind(message_ids)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| storage_error("failed to read deleted fact provenance", error))?;
+        rows.into_iter()
+            .map(|row| {
+                row.try_get::<String, _>("message_id")
+                    .map_err(|error| storage_error("row message_id", error))
+            })
+            .collect()
+    }
+
+    async fn add_fact_source_message_ids(
+        &self,
+        tenant: &TenantContext,
+        fact_id: Uuid,
+        message_ids: &[String],
+    ) -> MemquiraResult<()> {
+        // Compare-and-set on the column, so a concurrent provenance write is retried, not lost.
+        for _ in 0..PROVENANCE_WRITE_ATTEMPTS {
+            let row = sqlx::query(
+                "SELECT source_message_ids FROM facts WHERE id = $1 AND org_id = $2 AND user_id = $3 AND deleted_at IS NULL",
+            )
+            .bind(fact_id)
+            .bind(&tenant.org_id)
+            .bind(&tenant.user_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|error| storage_error("failed to read fact provenance", error))?;
+            let Some(row) = row else {
+                return Ok(());
+            };
+            let current: Option<serde_json::Value> = row
+                .try_get("source_message_ids")
+                .map_err(|error| storage_error("row source_message_ids", error))?;
+            let existing: Vec<String> = match &current {
+                Some(value) => serde_json::from_value(value.clone()).map_err(|error| {
+                    MemquiraError::StorageError(format!("invalid source_message_ids: {error}"))
+                })?,
+                None => Vec::new(),
+            };
+            let before = existing.len();
+            let mut merged = existing;
+            for id in message_ids {
+                if !merged.contains(id) {
+                    merged.push(id.clone());
+                }
+            }
+            if merged.len() == before {
+                return Ok(());
+            }
+            let result = sqlx::query(
+                "UPDATE facts SET source_message_ids = $1 WHERE id = $2 AND org_id = $3 AND user_id = $4 AND deleted_at IS NULL AND source_message_ids IS NOT DISTINCT FROM $5",
+            )
+            .bind(serde_json::Value::from(merged))
+            .bind(fact_id)
+            .bind(&tenant.org_id)
+            .bind(&tenant.user_id)
+            .bind(current)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| storage_error("failed to update fact provenance", error))?;
+            if result.rows_affected() == 1 {
+                return Ok(());
+            }
+        }
+        Err(MemquiraError::Conflict(
+            "the memory's provenance changed concurrently; retry the request".to_string(),
+        ))
     }
 
     async fn delete_user_data(&self, tenant: &TenantContext) -> MemquiraResult<()> {

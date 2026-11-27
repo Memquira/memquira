@@ -8,6 +8,7 @@ dynamic = ["version"]
 description = "Python client for the Memquira memory API"
 readme = "README.md"
 license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = ["httpx>=0.25,<1"]
 classifiers = [

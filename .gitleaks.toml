@@ -1,5 +1,6 @@
-# Gitleaks configuration (CI secret scan). Default rules, plus an allowlist for the two documented
-# local-development keys that appear in examples and Compose files. Never add a real credential here.
+# Gitleaks configuration (CI secret scan). Default rules, plus an allowlist for the documented
+# local-development keys in examples and Compose files and the fake keys in the Python tests.
+# Never add a real credential here.
 
 title = "memquira gitleaks"
 
@@ -7,8 +8,11 @@ title = "memquira gitleaks"
 useDefault = true
 
 [allowlist]
-description = "Documented local-development API keys (not secrets)"
+description = "Documented local-development API keys and fake test keys (not secrets)"
 regexes = [
   '''memcore_dev_key''',
   '''memcore_local_starter_key''',
+  '''mc_live_test_secret_key_0123456789''',
+  '''mc_live_0123456789abcdef''',
+  '''mqd_abcdefghijklmnopqrstuvwxyz012345''',
 ]

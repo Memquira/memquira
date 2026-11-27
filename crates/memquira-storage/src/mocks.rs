@@ -385,6 +385,45 @@ impl FactStore for MockFactStore {
         Ok(())
     }
 
+    async fn message_ids_cited_by_deleted_facts(
+        &self,
+        tenant: &TenantContext,
+        message_ids: &[String],
+    ) -> MemquiraResult<HashSet<String>> {
+        let facts = self.facts.read().expect("facts lock poisoned");
+        let deleted = self.deleted.read().expect("deleted lock poisoned");
+        Ok(facts
+            .values()
+            .filter(|fact| fact_matches_tenant(fact, tenant) && deleted.contains(&fact.id))
+            .flat_map(|fact| fact.structure.source_message_ids.iter())
+            .filter(|id| message_ids.contains(id))
+            .cloned()
+            .collect())
+    }
+
+    async fn add_fact_source_message_ids(
+        &self,
+        tenant: &TenantContext,
+        fact_id: Uuid,
+        message_ids: &[String],
+    ) -> MemquiraResult<()> {
+        if self.is_deleted(&fact_id) {
+            return Ok(());
+        }
+        let mut facts = self.facts.write().expect("facts lock poisoned");
+        if let Some(fact) = facts
+            .get_mut(&fact_id)
+            .filter(|fact| fact_matches_tenant(fact, tenant))
+        {
+            for id in message_ids {
+                if !fact.structure.source_message_ids.contains(id) {
+                    fact.structure.source_message_ids.push(id.clone());
+                }
+            }
+        }
+        Ok(())
+    }
+
     async fn delete_user_data(&self, tenant: &TenantContext) -> MemquiraResult<()> {
         let key = tenant_key(tenant);
         let mut facts = self.facts.write().expect("facts lock poisoned");

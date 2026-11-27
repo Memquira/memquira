@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "memquira": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["memquira-mcp"],
+      "env": {
+        "MEMQUIRA_API_KEY": "${env:MEMQUIRA_API_KEY}"
+      }
+    }
+  }
+}

@@ -655,7 +655,9 @@ impl MemoryEngine {
                 let structured = self
                     .extract_structured(&input, messages_for_extraction, config)
                     .await?;
-                (structured.output, structured.temporal)
+                let mut output = structured.output;
+                cite_the_only_message(&mut output.candidates, &input.messages);
+                (output, structured.temporal)
             }
         };
 
@@ -765,6 +767,8 @@ impl MemoryEngine {
                 // acknowledged; a repair failure fails the request.
                 self.heal_fact_vector(&input.tenant, existing_fact_id)
                     .await?;
+                self.record_restating_messages(&input.tenant, existing_fact_id, &candidate)
+                    .await?;
                 summary.discard(FactDiscardReason::DuplicateContent);
                 record_event_best_effort(
                     &self.event_store,
@@ -806,6 +810,8 @@ impl MemoryEngine {
                     journal.await_in_flight(other, &mut waits).await?;
                     continue 'attempt;
                 }
+                self.record_restating_messages(&input.tenant, existing_fact_id, &candidate)
+                    .await?;
                 summary.discard(FactDiscardReason::DuplicateEmbedding);
                 record_event_best_effort(
                     &self.event_store,
@@ -1072,6 +1078,10 @@ impl MemoryEngine {
                     .await;
                 }
                 LifecycleApplyResult::NoOp => {
+                    if let Some(target) = decision.target_fact_id {
+                        self.record_restating_messages(&input.tenant, target, &candidate)
+                            .await?;
+                    }
                     summary.discard(FactDiscardReason::NoOpDecision);
                     record_event_best_effort(
                         &self.event_store,
@@ -1090,8 +1100,13 @@ impl MemoryEngine {
                         journal.await_in_flight(other, &mut waits).await?;
                         continue 'attempt;
                     }
-                    self.record_concurrent_duplicate(&input.tenant, existing_fact_id, &mut summary)
-                        .await;
+                    self.record_concurrent_duplicate(
+                        &input.tenant,
+                        existing_fact_id,
+                        &candidate,
+                        &mut summary,
+                    )
+                    .await?;
                 }
             }
             break 'attempt;
@@ -1322,6 +1337,10 @@ impl MemoryEngine {
 
         match decision.operation {
             ConsolidationOperation::NoOp => {
+                if let Some(target) = decision.target_fact_id {
+                    self.record_restating_messages(&input.tenant, target, candidate)
+                        .await?;
+                }
                 summary.discard(if path == "fast_noop" {
                     FactDiscardReason::DuplicateContent
                 } else {
@@ -1518,8 +1537,13 @@ impl MemoryEngine {
                 if let Some(other) = journal.foreign_in_flight(existing_fact_id).await? {
                     return Ok(SupersedeOutcome::Wait(other));
                 }
-                self.record_concurrent_duplicate(&input.tenant, existing_fact_id, summary)
-                    .await;
+                self.record_concurrent_duplicate(
+                    &input.tenant,
+                    existing_fact_id,
+                    candidate,
+                    summary,
+                )
+                .await?;
                 return Ok(SupersedeOutcome::Done);
             }
             _ => return Ok(SupersedeOutcome::Done),
@@ -1622,8 +1646,8 @@ impl MemoryEngine {
         )
         .await?;
         if let LifecycleApplyResult::Duplicate { existing_fact_id } = result {
-            self.record_concurrent_duplicate(&input.tenant, existing_fact_id, summary)
-                .await;
+            self.record_concurrent_duplicate(&input.tenant, existing_fact_id, candidate, summary)
+                .await?;
             return Ok(None);
         }
         if let LifecycleApplyResult::Added(fact) = result {
@@ -1987,15 +2011,21 @@ impl MemoryEngine {
         .into_iter()
         .map(|episode| (episode.id, episode))
         .collect();
+        let withheld = self
+            .messages_of_deleted_memories(&input.tenant, stored.values())
+            .await?;
 
         let merge_started = std::time::Instant::now();
         let mut results: Vec<EpisodeSearchResult> = hits
             .into_iter()
             .filter_map(|hit| {
-                stored.get(&hit.fact_id).map(|episode| EpisodeSearchResult {
-                    episode: episode.clone(),
-                    score: hit.score,
-                })
+                stored
+                    .get(&hit.fact_id)
+                    .filter(|episode| !is_withheld(episode, &withheld))
+                    .map(|episode| EpisodeSearchResult {
+                        episode: episode.clone(),
+                        score: hit.score,
+                    })
             })
             .collect();
         results.sort_by(|left, right| {
@@ -2008,6 +2038,46 @@ impl MemoryEngine {
 
         record_stage("search", "episode_merge", merge_started);
         Ok(SearchEpisodesOutput { results })
+    }
+
+    /// The client message ids, among `episodes`, that a deleted memory of this user was extracted
+    /// from (its `source_message_ids`). Episode retrieval withholds those messages: deleting a
+    /// memory must not let its information come back through the message it came from. The
+    /// episodes themselves are kept (export, retention and full erasure are unchanged), and every
+    /// other memory extracted from the same message stays a live, retrievable fact.
+    async fn messages_of_deleted_memories<'a>(
+        &self,
+        tenant: &TenantContext,
+        episodes: impl Iterator<Item = &'a Episode>,
+    ) -> MemquiraResult<std::collections::HashSet<String>> {
+        let mut message_ids: Vec<String> = episodes
+            .filter_map(|episode| episode.message_id.clone())
+            .collect();
+        if message_ids.is_empty() {
+            return Ok(std::collections::HashSet::new());
+        }
+        message_ids.sort();
+        message_ids.dedup();
+        self.fact_store
+            .message_ids_cited_by_deleted_facts(tenant, &message_ids)
+            .await
+    }
+
+    /// Records that the candidate's source messages restate `fact_id` when ingestion stores
+    /// nothing new for it (a duplicate or a no-op), so that deleting the fact later also withholds
+    /// those messages from episode retrieval. Provenance only: nothing else about the fact changes.
+    async fn record_restating_messages(
+        &self,
+        tenant: &TenantContext,
+        fact_id: Uuid,
+        candidate: &crate::CandidateFact,
+    ) -> MemquiraResult<()> {
+        if candidate.structure.source_message_ids.is_empty() {
+            return Ok(());
+        }
+        self.fact_store
+            .add_fact_source_message_ids(tenant, fact_id, &candidate.structure.source_message_ids)
+            .await
     }
 
     /// Stores the request's messages as episodes and embeds the eligible ones.
@@ -3586,6 +3656,33 @@ fn vector_tie_key<'a>(
     }
 }
 
+/// Provenance for a structured fact the model did not attribute: when the request is one message
+/// with a client id, that message is the fact's only possible source, so the fact cites it.
+/// Deleting the fact then also withholds the message from episode retrieval. Facts that cite a
+/// message, and facts from requests of several messages, are unchanged.
+fn cite_the_only_message(candidates: &mut [crate::CandidateFact], messages: &[MemoryMessage]) {
+    let [message] = messages else {
+        return;
+    };
+    let Some(id) = &message.message_id else {
+        return;
+    };
+    for candidate in candidates {
+        if candidate.structure.source_message_ids.is_empty() {
+            candidate.structure.source_message_ids.push(id.clone());
+        }
+    }
+}
+
+/// Whether episode retrieval withholds `episode`: its client message is the source of a deleted
+/// memory (see `MemoryEngine::messages_of_deleted_memories`).
+fn is_withheld(episode: &Episode, withheld: &std::collections::HashSet<String>) -> bool {
+    episode
+        .message_id
+        .as_ref()
+        .is_some_and(|id| withheld.contains(id))
+}
+
 /// Stable tie order for exactly tied episode scores: stable fields of the message first; the
 /// episode ID only separates rows identical in all of them.
 fn episode_tie_key(episode: &Episode) -> (&str, Option<&str>, Option<&str>, Uuid) {
@@ -3714,8 +3811,11 @@ impl MemoryEngine {
         &self,
         tenant: &TenantContext,
         existing_fact_id: Uuid,
+        candidate: &crate::CandidateFact,
         summary: &mut MemoryOperationSummary,
-    ) {
+    ) -> MemquiraResult<()> {
+        self.record_restating_messages(tenant, existing_fact_id, candidate)
+            .await?;
         summary.discard(FactDiscardReason::DuplicateContent);
         record_event_best_effort(
             &self.event_store,
@@ -3732,6 +3832,7 @@ impl MemoryEngine {
             ),
         )
         .await;
+        Ok(())
     }
 }
 

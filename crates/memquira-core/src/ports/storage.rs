@@ -278,6 +278,35 @@ pub trait FactStore: Send + Sync {
 
     async fn soft_delete_fact(&self, tenant: &TenantContext, fact_id: Uuid) -> MemquiraResult<()>;
 
+    /// Which of `message_ids` a soft-deleted fact of THIS tenant cites in its
+    /// `source_message_ids`. Episode retrieval leaves those source messages out, so information a
+    /// deleted memory was extracted from does not come back through its message. Other tenants'
+    /// rows never match; live facts never match. The default (test wrappers, stores without
+    /// provenance) matches nothing.
+    async fn message_ids_cited_by_deleted_facts(
+        &self,
+        tenant: &TenantContext,
+        message_ids: &[String],
+    ) -> MemquiraResult<std::collections::HashSet<String>> {
+        let _ = (tenant, message_ids);
+        Ok(std::collections::HashSet::new())
+    }
+
+    /// Appends `message_ids` that the live fact does not cite yet to its `source_message_ids`
+    /// (provenance only: content, times, dedup key and vector are unchanged). Used when a message
+    /// restates a stored fact and ingestion stores nothing new (a duplicate or no-op), so deleting
+    /// the fact later also withholds that message. A deleted or unknown fact is left alone. The
+    /// default (test wrappers) records nothing.
+    async fn add_fact_source_message_ids(
+        &self,
+        tenant: &TenantContext,
+        fact_id: Uuid,
+        message_ids: &[String],
+    ) -> MemquiraResult<()> {
+        let _ = (tenant, fact_id, message_ids);
+        Ok(())
+    }
+
     async fn delete_user_data(&self, tenant: &TenantContext) -> MemquiraResult<()>;
 
     /// Soft-deletes active facts with `updated_at` older than `cutoff` for the tenant.

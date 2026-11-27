@@ -134,6 +134,9 @@ memories, so:
 - Give an agent's key only `MemoryRead` and `MemoryWrite`. Add `MemoryDelete` only if the agent may delete
   memories. Never give it `UserDelete` or admin scopes, and do not expose `forget_user` as a tool.
 
+For Claude Code, Cursor and other MCP clients there is a ready-made MCP server built on this client:
+[integrations/mcp-python](../../integrations/mcp-python/README.md).
+
 ## Development
 
 ```bash

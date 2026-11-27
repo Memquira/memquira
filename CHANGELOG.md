@@ -5,6 +5,25 @@ All notable changes to this project are documented in this file. The project fol
 
 ## [Unreleased]
 
+### Added
+
+- `memquira-mcp` (preview, `integrations/mcp-python`): an MCP server over stdio that gives Claude Code, Cursor and
+  other MCP clients five memory tools (remember, search, get context, list, delete one memory) on the Python client.
+  One identity per process from `MEMQUIRA_*` settings; strict tool schemas that refuse identity arguments; https
+  required except to localhost; works with self-hosted servers and with the hosted developer preview's developer
+  tokens. Not on PyPI yet.
+
+### Fixed
+
+- Deleting one memory no longer lets its information come back through the message it was extracted from. With
+  episodes on, `DELETE /api/v1/users/{user_id}/memories/{memory_id}` removed the fact and its vector, but the source
+  message stayed searchable as an episode, so `POST /api/v1/memories/context` (and episode search and candidates)
+  still returned the deleted text. Episode retrieval now withholds every message a deleted memory of the same user
+  cites in `source_message_ids`. A message that restates a stored memory without storing anything new (a duplicate or
+  no-op) is now recorded as a further source of it, and a structured fact the model did not attribute, from a request
+  of one message with a client id, cites that message. Episodes are not erased: export, retention and user erasure
+  are unchanged, and other memories from the same message stay searchable. No schema change.
+
 ## [0.3.1] - 2026-11-23
 
 ### Added
