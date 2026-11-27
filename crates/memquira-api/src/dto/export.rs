@@ -60,6 +60,11 @@ pub struct UserMemoryExportResponse {
     /// import verifies before any write. Legacy and capped exports never carry it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completeness: Option<ExportCompletenessResponse>,
+    /// Client message ids of exported episodes that a deleted memory cites; retrieval withholds
+    /// them. An import restores such an episode only when it also stores, deleted, a fact that
+    /// cites it, and skips it otherwise. Omitted when empty; optional on import.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub withheld_message_ids: Vec<String>,
 }
 
 /// The complete-export manifest.
@@ -231,6 +236,11 @@ pub struct ExportFactItemResponse {
     /// Omitted when unset; optional on import.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub superseded_by: Option<Uuid>,
+    /// When the fact was deleted. Only an `include_deleted` export has deleted facts. An import
+    /// stores the fact deleted: never active, never indexed, its source messages still withheld.
+    /// Omitted when unset; optional on import.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
@@ -284,6 +294,7 @@ impl From<&Fact> for ExportFactItemResponse {
             source_message_ids: fact.structure.source_message_ids.clone(),
             superseded_at: fact.superseded_at,
             superseded_by: fact.superseded_by,
+            deleted_at: None,
         }
     }
 }
@@ -368,6 +379,11 @@ pub fn user_memory_export_from_response(
     let org_id = response.org_id.clone();
     let user_id = response.user_id.clone();
 
+    let deleted_facts = response
+        .facts
+        .iter()
+        .filter_map(|fact| fact.deleted_at.map(|at| (fact.id, at)))
+        .collect();
     let facts = response
         .facts
         .into_iter()
@@ -411,6 +427,8 @@ pub fn user_memory_export_from_response(
                 .collect()
         }),
         completeness: response.completeness.map(Into::into),
+        deleted_facts,
+        withheld_message_ids: response.withheld_message_ids,
     })
 }
 
@@ -463,13 +481,17 @@ impl From<UserMemoryExport> for ExportUserResponse {
                 facts: export
                     .facts
                     .iter()
-                    .map(ExportFactItemResponse::from)
+                    .map(|fact| ExportFactItemResponse {
+                        deleted_at: export.deleted_facts.get(&fact.id).copied(),
+                        ..ExportFactItemResponse::from(fact)
+                    })
                     .collect(),
                 memory_events: export
                     .memory_events
                     .iter()
                     .map(MemoryEventItemResponse::from)
                     .collect(),
+                withheld_message_ids: export.withheld_message_ids.clone(),
                 truncated: export.truncated.as_ref().map(|sections| {
                     sections
                         .iter()

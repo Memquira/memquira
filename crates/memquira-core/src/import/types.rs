@@ -59,7 +59,11 @@ pub struct ImportUserDataOutput {
     /// are always false, whatever their row counts.
     #[serde(default)]
     pub manifest_consistent: bool,
+    /// Fact rows written, deleted ones included.
     pub imported_facts: usize,
+    /// Of `imported_facts`, the facts stored deleted (never active, never indexed).
+    #[serde(default)]
+    pub imported_deleted_facts: usize,
     pub imported_events: usize,
     pub skipped_facts: usize,
     pub replaced_existing: bool,
@@ -68,7 +72,8 @@ pub struct ImportUserDataOutput {
     /// Episodes imported from a v2 export; `None` when the export has none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub imported_episodes: Option<usize>,
-    /// Episodes in the export that were not imported because episodes are disabled.
+    /// Episodes in the export that were not imported: all of them when episodes are disabled,
+    /// otherwise the messages of deleted memories that this import does not store deleted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skipped_episodes: Option<usize>,
     /// Entities imported from a v3 export; `None` when the export has none.

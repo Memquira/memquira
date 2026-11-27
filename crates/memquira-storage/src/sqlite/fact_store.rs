@@ -195,6 +195,7 @@ impl SqliteFactStore {
         tenant: &TenantContext,
         fact: &Fact,
         dedup_key: Option<&str>,
+        deleted_at: Option<DateTime<Utc>>,
     ) -> MemquiraResult<u64> {
         ensure_fact_tenant(fact, tenant)?;
 
@@ -231,7 +232,7 @@ impl SqliteFactStore {
                 subject, event_time_start, event_time_end, event_time_granularity,
                 event_time_text, observed_at, session_id, source_message_ids,
                 superseded_at, superseded_by{key_column}
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?{key_value})
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?{key_value})
             {conflict}
             "#
         );
@@ -250,6 +251,7 @@ impl SqliteFactStore {
             .bind(datetime_to_str(fact.recorded_at))
             .bind(datetime_to_str(fact.updated_at))
             .bind(metadata_to_str(&fact.metadata)?)
+            .bind(optional_datetime_to_str(deleted_at))
             .bind(structure.subject)
             .bind(structure.event_time_start)
             .bind(structure.event_time_end)
@@ -293,7 +295,7 @@ impl SqliteFactStore {
 #[async_trait]
 impl FactStore for SqliteFactStore {
     async fn insert_fact(&self, tenant: &TenantContext, fact: Fact) -> MemquiraResult<Fact> {
-        self.insert_row(tenant, &fact, None).await?;
+        self.insert_row(tenant, &fact, None, None).await?;
         Ok(fact)
     }
 
@@ -305,7 +307,11 @@ impl FactStore for SqliteFactStore {
     ) -> MemquiraResult<DedupInsert> {
         // A holder that is deleted between the conflict and the read-back frees the key: retry.
         for _ in 0..3 {
-            if self.insert_row(tenant, &fact, Some(dedup_key)).await? > 0 {
+            if self
+                .insert_row(tenant, &fact, Some(dedup_key), None)
+                .await?
+                > 0
+            {
                 return Ok(DedupInsert::Inserted(fact));
             }
             if let Some(existing_fact_id) = self.fact_holding_dedup_key(tenant, dedup_key).await? {
@@ -623,6 +629,61 @@ impl FactStore for SqliteFactStore {
             }
         }
         Ok(cited)
+    }
+
+    async fn deleted_fact_times(
+        &self,
+        tenant: &TenantContext,
+        fact_ids: &[Uuid],
+    ) -> MemquiraResult<std::collections::HashMap<Uuid, DateTime<Utc>>> {
+        let mut times = std::collections::HashMap::new();
+        for chunk in fact_ids.chunks(PROVENANCE_LOOKUP_CHUNK) {
+            let mut builder =
+                QueryBuilder::<Sqlite>::new("SELECT id, deleted_at FROM facts WHERE org_id = ");
+            builder
+                .push_bind(&tenant.org_id)
+                .push(" AND user_id = ")
+                .push_bind(&tenant.user_id)
+                .push(" AND deleted_at IS NOT NULL AND id IN (");
+            let mut separated = builder.separated(", ");
+            for id in chunk {
+                separated.push_bind(id.to_string());
+            }
+            builder.push(")");
+            let rows = builder
+                .build()
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|error| storage_error("failed to read fact deletion times", error))?;
+            for row in rows {
+                let id: String = row
+                    .try_get("id")
+                    .map_err(|error| storage_error("row id", error))?;
+                let deleted_at: String = row
+                    .try_get("deleted_at")
+                    .map_err(|error| storage_error("row deleted_at", error))?;
+                let id = Uuid::parse_str(&id).map_err(|error| {
+                    MemquiraError::StorageError(format!("invalid fact id: {error}"))
+                })?;
+                times.insert(
+                    id,
+                    crate::sqlite::conversions::datetime_from_str(&deleted_at)?,
+                );
+            }
+        }
+        Ok(times)
+    }
+
+    async fn insert_deleted_fact(
+        &self,
+        tenant: &TenantContext,
+        fact: Fact,
+        deleted_at: DateTime<Utc>,
+    ) -> MemquiraResult<()> {
+        // One statement: the row is never live.
+        self.insert_row(tenant, &fact, None, Some(deleted_at))
+            .await
+            .map(|_| ())
     }
 
     async fn add_fact_source_message_ids(

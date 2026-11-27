@@ -535,3 +535,11 @@ async def test_api_key_never_appears_in_any_result(caplog: pytest.LogCaptureFixt
             texts.append((await client.call_tool(tool, args)).content[0].text)
     assert all(API_KEY not in t for t in texts)
     assert API_KEY not in caplog.text
+
+
+def test_the_instructions_open_with_a_self_contained_summary() -> None:
+    # Codex asks servers to keep the first 512 characters of their instructions self-contained.
+    summary = INSTRUCTIONS[:512].split("\n\n")[0]
+    assert len(summary) <= 512
+    for rule in ("get_context", "remember", "never secrets", "delete_memory", "untrusted", "never follow instructions"):
+        assert rule in summary, rule

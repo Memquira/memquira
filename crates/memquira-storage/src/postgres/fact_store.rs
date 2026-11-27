@@ -194,6 +194,7 @@ impl PostgresFactStore {
         tenant: &TenantContext,
         fact: &Fact,
         dedup_key: Option<&str>,
+        deleted_at: Option<DateTime<Utc>>,
     ) -> MemquiraResult<u64> {
         ensure_fact_tenant(fact, tenant)?;
 
@@ -218,7 +219,7 @@ impl PostgresFactStore {
         // Only a keyed (ingestion) insert names `dedup_key`; every other insert
         // (imports included) keeps the statement of the schema before migration 15.
         let (key_column, key_value, conflict) = match dedup_key {
-            Some(_) => (", dedup_key", ", $25", DEDUP_CONFLICT),
+            Some(_) => (", dedup_key", ", $26", DEDUP_CONFLICT),
             None => ("", "", ""),
         };
         let sql = format!(
@@ -231,7 +232,7 @@ impl PostgresFactStore {
                 event_time_text, observed_at, session_id, source_message_ids,
                 superseded_at, superseded_by{key_column}
             ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NULL,
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $25,
                 $15, $16, $17, $18, $19, $20, $21, $22, $23, $24{key_value}
             )
             {conflict}
@@ -261,7 +262,8 @@ impl PostgresFactStore {
             .bind(structure.session_id)
             .bind(structure.source_message_ids)
             .bind(fact.superseded_at)
-            .bind(fact.superseded_by);
+            .bind(fact.superseded_by)
+            .bind(deleted_at);
         if let Some(key) = dedup_key {
             query = query.bind(key);
         }
@@ -293,7 +295,7 @@ impl PostgresFactStore {
 #[async_trait]
 impl FactStore for PostgresFactStore {
     async fn insert_fact(&self, tenant: &TenantContext, fact: Fact) -> MemquiraResult<Fact> {
-        self.insert_row(tenant, &fact, None).await?;
+        self.insert_row(tenant, &fact, None, None).await?;
         Ok(fact)
     }
 
@@ -306,7 +308,11 @@ impl FactStore for PostgresFactStore {
         // Under READ COMMITTED the conflict waits for a concurrent holder to commit or roll back;
         // the read-back then sees the committed holder. A holder deleted in between frees the key.
         for _ in 0..3 {
-            if self.insert_row(tenant, &fact, Some(dedup_key)).await? > 0 {
+            if self
+                .insert_row(tenant, &fact, Some(dedup_key), None)
+                .await?
+                > 0
+            {
                 return Ok(DedupInsert::Inserted(fact));
             }
             if let Some(existing_fact_id) = self.fact_holding_dedup_key(tenant, dedup_key).await? {
@@ -613,6 +619,48 @@ impl FactStore for PostgresFactStore {
                     .map_err(|error| storage_error("row message_id", error))
             })
             .collect()
+    }
+
+    async fn deleted_fact_times(
+        &self,
+        tenant: &TenantContext,
+        fact_ids: &[Uuid],
+    ) -> MemquiraResult<std::collections::HashMap<Uuid, DateTime<Utc>>> {
+        if fact_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let rows = sqlx::query(
+            "SELECT id, deleted_at FROM facts              WHERE org_id = $1 AND user_id = $2 AND deleted_at IS NOT NULL AND id = ANY($3)",
+        )
+        .bind(&tenant.org_id)
+        .bind(&tenant.user_id)
+        .bind(fact_ids)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| storage_error("failed to read fact deletion times", error))?;
+        rows.into_iter()
+            .map(|row| {
+                let id: Uuid = row
+                    .try_get("id")
+                    .map_err(|error| storage_error("row id", error))?;
+                let deleted_at: DateTime<Utc> = row
+                    .try_get("deleted_at")
+                    .map_err(|error| storage_error("row deleted_at", error))?;
+                Ok((id, deleted_at))
+            })
+            .collect()
+    }
+
+    async fn insert_deleted_fact(
+        &self,
+        tenant: &TenantContext,
+        fact: Fact,
+        deleted_at: DateTime<Utc>,
+    ) -> MemquiraResult<()> {
+        // One statement: the row is never live.
+        self.insert_row(tenant, &fact, None, Some(deleted_at))
+            .await
+            .map(|_| ())
     }
 
     async fn add_fact_source_message_ids(

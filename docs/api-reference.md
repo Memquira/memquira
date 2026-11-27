@@ -114,10 +114,14 @@ Scope: `MemoryDelete`. Soft-deletes the fact and removes its vector. `404 NOT_FO
 this user; deleting an already deleted memory is safe.
 
 With episodes on, the messages the memory was extracted from (its `source_message_ids`, including later messages that
-restated it) are also withheld from episode search, candidates and `/memories/context`, so the deleted information
-does not come back through them. Other memories extracted from the same message stay searchable. The messages are
-kept as source data until the user is erased or retention removes them, and they remain in the user's export.
-Messages are linked to a memory by client `message_id`: send one with every message.
+restated it, and a message whose request to forget it removed the memory) are also withheld from episode search,
+candidates and `/memories/context`, so the deleted information does not come back through them. Other memories
+extracted from the same message stay searchable. The messages are kept as source data until the user is erased or
+retention removes them, and they remain in the user's export. Messages are linked to a memory by client
+`message_id`: send one with every message.
+
+Deleting a memory is not erasure: the deleted row and its source messages stay stored (and exportable) until the user
+is erased (`DELETE /api/v1/users/{user_id}`) or retention removes them.
 
 ### `DELETE /api/v1/users/{user_id}` — erase a user
 
@@ -159,7 +163,9 @@ and a `budget` breakdown. Scope: `MemoryRead`.
 ## Export, import and retention
 
 - `GET /api/v1/users/{user_id}/export` — a `memcore.user_export.v1` JSON document of the user's facts (and audit
-  events unless `include_events=false`). Scopes: `UserDelete`, `AuditRead` or `AdminRead`.
+  events unless `include_events=false`). `include_deleted=true` adds deleted memories, each marked with `deleted_at`;
+  `withheld_message_ids` lists exported messages that a deleted memory cites. Scopes: `UserDelete`, `AuditRead` or
+  `AdminRead`.
 - `POST /api/v1/users/{user_id}/import` — import such a document. Body: `{"export": <document>, "mode": "append"`
   or `"replace", "restore_events": false, "dry_run": false}`. Scopes: `MemoryWrite` or `AdminWrite`. See [operations.md](operations.md#export-and-import).
 - `POST /api/v1/users/{user_id}/retention/apply` — apply the retention policy to one user (`dry_run` defaults to

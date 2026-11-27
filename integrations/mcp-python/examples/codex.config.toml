@@ -1,0 +1,36 @@
+# Memquira for OpenAI Codex: add to ~/.codex/config.toml (all projects), or to .codex/config.toml in a trusted
+# project. The Codex CLI and the IDE extension read the same file.
+#
+# Credentials are never written here: `env_vars` forwards the named variables from the environment Codex was
+# started in. Set them in your shell profile or a secrets manager, not in this file.
+
+# --- Hosted developer preview (app.memquira.com): only the developer token. -----------------------------------
+[mcp_servers.memquira]
+command = "uvx"
+args = ["memquira-mcp"]
+env_vars = ["MEMQUIRA_API_KEY"]   # mqd_... developer token; do not set MEMQUIRA_ORG_ID or MEMQUIRA_USER_ID
+startup_timeout_sec = 30          # the first uvx run downloads the package
+tool_timeout_sec = 90             # remember runs a language model on the server
+
+# Ask before deleting a memory. (default_tools_approval_mode = "writes" also asks before remember.)
+[mcp_servers.memquira.tools.delete_memory]
+approval_mode = "prompt"
+
+# --- Self-hosted Memquira: use this table instead of the one above. -------------------------------------------
+# [mcp_servers.memquira]
+# command = "uvx"
+# args = ["memquira-mcp"]
+# env_vars = ["MEMQUIRA_URL", "MEMQUIRA_API_KEY", "MEMQUIRA_ORG_ID", "MEMQUIRA_USER_ID"]
+# startup_timeout_sec = 30
+# tool_timeout_sec = 90
+#
+# [mcp_servers.memquira.tools.delete_memory]
+# approval_mode = "prompt"
+
+# --- Optional: keep Codex's own memories (off by default) from copying what Memquira recalled. -----------------
+# If you turn on Codex memories, chats that used MCP tools could otherwise be summarised into local memory files,
+# which deleting a Memquira memory does not reach.
+# [features]
+# memories = true
+# [memories]
+# disable_on_external_context = true

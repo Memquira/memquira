@@ -1008,6 +1008,14 @@ impl MemoryEngine {
                 journal.await_in_flight(other, &mut waits).await?;
                 continue 'attempt;
             }
+            // A message that asks to forget a memory usually restates it: record it as a source of
+            // the target while the target is live, so the delete also withholds this message.
+            if matches!(decision.operation, FactOperation::Delete)
+                && let Some(target) = decision.target_fact_id
+            {
+                self.record_restating_messages(&input.tenant, target, &candidate)
+                    .await?;
+            }
             let new_fact_id = journal.record_decision(&lifecycle_ctx, &decision).await?;
             let result = timed(
                 "ingest",
@@ -3110,13 +3118,28 @@ impl MemoryEngine {
         }
 
         if input.dry_run {
-            return Ok(dry_run_output(
+            // The same read-only plan the import follows, so the counts match it.
+            let planned_ids = self.planned_import_ids(&input).await?;
+            let deletions = self.plan_import_deletions(&input, &planned_ids).await?;
+            let mut output = dry_run_output(
                 &input,
                 validation,
                 self.event_store.is_some(),
                 self.episode_data().is_some(),
                 self.entity_data_store().is_some(),
-            ));
+            );
+            output.imported_deleted_facts = deletions.deleted_count();
+            if self.episode_data().is_some()
+                && let Some(episodes) = &input.export.episodes
+            {
+                let skipped = episodes
+                    .iter()
+                    .filter(|episode| deletions.skips(episode))
+                    .count();
+                output.imported_episodes = Some(episodes.len() - skipped);
+                output.skipped_episodes = Some(skipped);
+            }
+            return Ok(output);
         }
 
         // The stored id of every exported fact is
@@ -3125,19 +3148,7 @@ impl MemoryEngine {
         // is stored under `derived_import_fact_id`, which depends on the tenant and the source id
         // alone. Fact ids are global keys, so keeping a non-owned id would let other tenants' rows
         // change the outcome of this import; no id is chosen through a global lookup.
-        let mut planned_ids = Vec::with_capacity(input.export.facts.len());
-        for exported_fact in &input.export.facts {
-            let owned = self
-                .fact_store
-                .get_fact_including_deleted(&input.tenant, exported_fact.id)
-                .await?
-                .is_some();
-            planned_ids.push(if owned {
-                exported_fact.id
-            } else {
-                derived_import_fact_id(&input.tenant, exported_fact.id)
-            });
-        }
+        let planned_ids = self.planned_import_ids(&input).await?;
         let mut distinct_ids = std::collections::HashSet::with_capacity(planned_ids.len());
         if !planned_ids.iter().all(|id| distinct_ids.insert(*id)) {
             return Err(memquira_common::MemquiraError::ValidationError(format!(
@@ -3153,15 +3164,20 @@ impl MemoryEngine {
         // row with different content is re-keyed to a fresh id. Replace mode deletes first and is
         // the documented recovery. This is a read-only preflight, not a transaction: concurrent
         // imports of the same export are not serialised by it.
+        // Read before any write (in replace mode before the deletion): which exported facts are
+        // stored deleted and which exported messages are not restored.
+        let deletions = self.plan_import_deletions(&input, &planned_ids).await?;
+
         let mut import_ids = planned_ids.clone();
         if matches!(input.mode, ImportMode::Append) {
             let mut deleted_id_collision = false;
-            for ((exported_fact, planned), import_id) in input
+            for (index, ((exported_fact, planned), import_id)) in input
                 .export
                 .facts
                 .iter()
                 .zip(&planned_ids)
                 .zip(import_ids.iter_mut())
+                .enumerate()
             {
                 let Some(state) = self
                     .fact_store
@@ -3171,6 +3187,12 @@ impl MemoryEngine {
                     continue;
                 };
                 if state.deleted {
+                    // A deleted fact this export already stored deleted: re-applied.
+                    if deletions.deleted_at[index].is_some()
+                        && state.fact.content == exported_fact.content
+                    {
+                        return Err(memquira_common::MemquiraError::import_already_applied());
+                    }
                     deleted_id_collision = true;
                 } else if state.fact.content == exported_fact.content {
                     return Err(memquira_common::MemquiraError::import_already_applied());
@@ -3214,6 +3236,7 @@ impl MemoryEngine {
             }
 
             let mut imported_facts = 0usize;
+            let mut imported_deleted_facts = 0usize;
             let skipped_facts = 0usize;
 
             // S3I: one map from exported to stored id for every reference to a fact of this import
@@ -3226,12 +3249,29 @@ impl MemoryEngine {
                 .zip(&import_ids)
                 .map(|(exported, id)| (exported.id, *id))
                 .collect();
-            for (exported_fact, fact_id) in input.export.facts.iter().zip(import_ids) {
+            for ((exported_fact, fact_id), deleted_at) in input
+                .export
+                .facts
+                .iter()
+                .zip(import_ids)
+                .zip(&deletions.deleted_at)
+            {
                 let mut fact = fact_for_import(exported_fact, &input.tenant, fact_id)?;
                 if let Some(replacement) = fact.superseded_by
                     && let Some(stored) = fact_ids.get(&replacement)
                 {
                     fact.superseded_by = Some(*stored);
+                }
+
+                // A deleted fact is stored deleted, with its provenance (so its source messages
+                // stay withheld), and is never embedded or indexed.
+                if let Some(deleted_at) = deleted_at {
+                    self.fact_store
+                        .insert_deleted_fact(&input.tenant, fact, *deleted_at)
+                        .await?;
+                    imported_facts += 1;
+                    imported_deleted_facts += 1;
+                    continue;
                 }
 
                 self.fact_store
@@ -3279,10 +3319,17 @@ impl MemoryEngine {
                     (Some(exported), None) => (Some(0), Some(exported.len())),
                     (Some(exported), Some(episodes)) => {
                         // Re-inserted under this tenant with new IDs; client message IDs keep the
-                        // insert idempotent, and eligible episodes are embedded again.
+                        // insert idempotent, and eligible episodes are embedded again. A message a
+                        // deleted memory cites is restored only when this import stores that
+                        // memory deleted (retrieval then withholds it); otherwise it is skipped.
                         let now = Utc::now();
+                        let skipped = exported
+                            .iter()
+                            .filter(|episode| deletions.skips(episode))
+                            .count();
                         let fresh = exported
                             .iter()
+                            .filter(|episode| !deletions.skips(episode))
                             .map(|episode| Episode {
                                 id: Uuid::new_v4(),
                                 org_id: input.tenant.org_id.clone(),
@@ -3295,7 +3342,7 @@ impl MemoryEngine {
                         let stored = self
                             .index_episodes(&input.tenant, episodes, fresh, false)
                             .await?;
-                        (Some(stored), Some(0))
+                        (Some(stored), Some(skipped))
                     }
                 };
 
@@ -3306,8 +3353,24 @@ impl MemoryEngine {
                     (None, _) => (None, None),
                     (Some(exported), None) => (Some(0), Some(exported.entities.len())),
                     (Some(exported), Some(store)) => {
+                        // Links to a fact stored deleted are dropped, as deleting it drops them.
+                        let live_fact_ids: std::collections::HashMap<Uuid, Uuid> = input
+                            .export
+                            .facts
+                            .iter()
+                            .zip(&deletions.deleted_at)
+                            .filter(|(_, deleted_at)| deleted_at.is_none())
+                            .filter_map(|(exported, _)| {
+                                fact_ids.get(&exported.id).map(|id| (exported.id, *id))
+                            })
+                            .collect();
                         let imported = self
-                            .import_entities(&input.tenant, store.as_ref(), exported, &fact_ids)
+                            .import_entities(
+                                &input.tenant,
+                                store.as_ref(),
+                                exported,
+                                &live_fact_ids,
+                            )
                             .await?;
                         (Some(imported), Some(0))
                     }
@@ -3318,6 +3381,7 @@ impl MemoryEngine {
             Ok(ImportUserDataOutput {
                 manifest_consistent: input.export.completeness.is_some(),
                 imported_facts,
+                imported_deleted_facts,
                 imported_events,
                 skipped_facts,
                 replaced_existing,
@@ -3331,6 +3395,103 @@ impl MemoryEngine {
         }
         .await;
         counted_write("import", written)
+    }
+
+    /// The id each exported fact is planned under (read-only): an id this tenant already holds
+    /// (live or soft-deleted) is kept; any other is derived from the tenant and the source id.
+    async fn planned_import_ids(&self, input: &ImportUserDataInput) -> MemquiraResult<Vec<Uuid>> {
+        let mut planned_ids = Vec::with_capacity(input.export.facts.len());
+        for exported_fact in &input.export.facts {
+            let owned = self
+                .fact_store
+                .get_fact_including_deleted(&input.tenant, exported_fact.id)
+                .await?
+                .is_some();
+            planned_ids.push(if owned {
+                exported_fact.id
+            } else {
+                derived_import_fact_id(&input.tenant, exported_fact.id)
+            });
+        }
+        Ok(planned_ids)
+    }
+
+    /// Which exported facts an import stores deleted, and which exported messages it does not
+    /// restore (read-only; in replace mode it reads the target before the deletion).
+    ///
+    /// A fact is stored deleted when the export marks it deleted, when the export carries a
+    /// delete event for it (exports written before the marker), or, in replace mode, when this
+    /// tenant already holds its planned id deleted, so restoring an older export does not bring
+    /// back a memory deleted since. A message the export lists as withheld (or, in replace mode,
+    /// that a deleted fact of this tenant cites) is restored only when one of the facts stored
+    /// deleted cites it; retrieval then keeps withholding it.
+    async fn plan_import_deletions(
+        &self,
+        input: &ImportUserDataInput,
+        planned_ids: &[Uuid],
+    ) -> MemquiraResult<ImportDeletionPlan> {
+        let replace = matches!(input.mode, ImportMode::Replace);
+        let target_deleted = if replace {
+            self.fact_store
+                .deleted_fact_times(&input.tenant, planned_ids)
+                .await?
+        } else {
+            std::collections::HashMap::new()
+        };
+        let mut delete_events: std::collections::HashMap<Uuid, chrono::DateTime<Utc>> =
+            std::collections::HashMap::new();
+        for event in &input.export.memory_events {
+            if event.operation == crate::MemoryEventOperation::Delete
+                && let Some(fact_id) = event.fact_id
+            {
+                delete_events
+                    .entry(fact_id)
+                    .and_modify(|at| *at = (*at).min(event.created_at))
+                    .or_insert(event.created_at);
+            }
+        }
+        let deleted_at: Vec<Option<chrono::DateTime<Utc>>> = input
+            .export
+            .facts
+            .iter()
+            .zip(planned_ids)
+            .map(|(fact, planned)| {
+                input
+                    .export
+                    .deleted_facts
+                    .get(&fact.id)
+                    .or_else(|| delete_events.get(&fact.id))
+                    .or_else(|| target_deleted.get(planned))
+                    .copied()
+            })
+            .collect();
+
+        let mut withheld: std::collections::HashSet<String> =
+            input.export.withheld_message_ids.iter().cloned().collect();
+        if replace && let Some(episodes) = &input.export.episodes {
+            let message_ids: Vec<String> = episodes
+                .iter()
+                .filter_map(|episode| episode.message_id.clone())
+                .collect();
+            if !message_ids.is_empty() {
+                withheld.extend(
+                    self.fact_store
+                        .message_ids_cited_by_deleted_facts(&input.tenant, &message_ids)
+                        .await?,
+                );
+            }
+        }
+        for (fact, deleted) in input.export.facts.iter().zip(&deleted_at) {
+            if deleted.is_some() {
+                for id in &fact.structure.source_message_ids {
+                    withheld.remove(id);
+                }
+            }
+        }
+        Ok(ImportDeletionPlan {
+            deleted_at,
+            skipped_messages: withheld,
+        })
     }
 
     pub async fn export_user_data(
@@ -3408,13 +3569,22 @@ impl MemoryEngine {
                 "user export is incomplete: per-export limits reached"
             );
         }
+        let (deleted_facts, withheld_message_ids) = self
+            .export_deletions(
+                &input.tenant,
+                &facts,
+                input.include_deleted,
+                episodes.as_deref(),
+            )
+            .await?;
         let export = UserMemoryExport::new(
             input.tenant.org_id,
             input.tenant.user_id,
             facts,
             memory_events,
         )
-        .with_truncated(truncated);
+        .with_truncated(truncated)
+        .with_deletions(deleted_facts, withheld_message_ids);
         // Without episodes or entities the export stays exactly the v1 format.
         let export = match episodes {
             Some(episodes) => export.with_episodes(episodes),
@@ -3424,6 +3594,47 @@ impl MemoryEngine {
             Some(entities) => export.with_entities(entities),
             None => export,
         })
+    }
+
+    /// The deletion state an export carries: when each exported deleted fact was deleted (only an
+    /// `include_deleted` export holds deleted facts) and which exported episodes a deleted memory
+    /// of the user cites. An import uses both so that a deleted memory stays deleted and its
+    /// source message stays withheld.
+    pub(crate) async fn export_deletions(
+        &self,
+        tenant: &TenantContext,
+        facts: &[Fact],
+        include_deleted: bool,
+        episodes: Option<&[Episode]>,
+    ) -> MemquiraResult<(
+        std::collections::BTreeMap<Uuid, chrono::DateTime<Utc>>,
+        Vec<String>,
+    )> {
+        let deleted_facts = if include_deleted {
+            let ids: Vec<Uuid> = facts.iter().map(|fact| fact.id).collect();
+            self.fact_store
+                .deleted_fact_times(tenant, &ids)
+                .await?
+                .into_iter()
+                .collect()
+        } else {
+            std::collections::BTreeMap::new()
+        };
+        let message_ids: Vec<String> = episodes
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|episode| episode.message_id.clone())
+            .collect();
+        let withheld = if message_ids.is_empty() {
+            Vec::new()
+        } else {
+            self.fact_store
+                .message_ids_cited_by_deleted_facts(tenant, &message_ids)
+                .await?
+                .into_iter()
+                .collect()
+        };
+        Ok((deleted_facts, withheld))
     }
 
     pub async fn list_memory_events(
@@ -3855,6 +4066,24 @@ fn dedup_noop_decision(existing_fact_id: Uuid, reason: String) -> FactOperationD
     }
 }
 
+/// What an import stores deleted and which messages it leaves out (`plan_import_deletions`).
+struct ImportDeletionPlan {
+    /// Per exported fact, in export order: when it was deleted, if it is stored deleted.
+    deleted_at: Vec<Option<chrono::DateTime<Utc>>>,
+    /// Withheld message ids that no fact stored deleted by this import cites: not restored.
+    skipped_messages: std::collections::HashSet<String>,
+}
+
+impl ImportDeletionPlan {
+    fn deleted_count(&self) -> usize {
+        self.deleted_at.iter().filter(|at| at.is_some()).count()
+    }
+
+    fn skips(&self, episode: &Episode) -> bool {
+        is_withheld(episode, &self.skipped_messages)
+    }
+}
+
 /// The exported fact under `tenant` and `fact_id`, keeping every stored field the export carries:
 /// the structure (subject, event time with its granularity and anchor, time expression,
 /// `observed_at`, session and source message IDs), the validity and supersession times, and the
@@ -3927,6 +4156,7 @@ fn dry_run_output(
         return ImportUserDataOutput {
             manifest_consistent: false,
             imported_facts: 0,
+            imported_deleted_facts: 0,
             imported_events: 0,
             skipped_facts: input.export.facts.len(),
             replaced_existing,
@@ -3948,6 +4178,7 @@ fn dry_run_output(
     ImportUserDataOutput {
         manifest_consistent: input.export.completeness.is_some(),
         imported_facts: input.export.facts.len(),
+        imported_deleted_facts: 0,
         imported_events,
         skipped_facts: 0,
         replaced_existing,

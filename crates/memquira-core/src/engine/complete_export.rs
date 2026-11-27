@@ -15,7 +15,7 @@
 //!   seen. Supported use is a quiescent user. Qdrant vectors are not part of the export.
 //! - Any store error during a page is returned as the export's error (no partial archive).
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use memquira_common::{MemquiraError, MemquiraResult};
@@ -34,6 +34,10 @@ struct Sections {
     events: Vec<MemoryEvent>,
     episodes: Vec<Episode>,
     entities: EntityExport,
+    /// Deleted exported facts with their deletion times, and withheld exported messages (read
+    /// with the sections, so the two reads compare them too).
+    deleted_facts: BTreeMap<Uuid, DateTime<Utc>>,
+    withheld_message_ids: Vec<String>,
 }
 
 struct Budget {
@@ -172,11 +176,18 @@ impl MemoryEngine {
             .sort_by(|a, b| (a.entity_id, a.fact_id).cmp(&(b.entity_id, b.fact_id)));
         entities.relations.sort_by(|a, b| a.id.cmp(&b.id));
 
+        let (deleted_facts, mut withheld_message_ids) = self
+            .export_deletions(tenant, &facts, input.include_deleted, Some(&episodes))
+            .await?;
+        withheld_message_ids.sort();
+
         Ok(Sections {
             facts,
             events,
             episodes,
             entities,
+            deleted_facts,
+            withheld_message_ids,
         })
     }
 }
@@ -217,6 +228,7 @@ fn build_export(input: &CompleteExportInput, s: Sections) -> UserMemoryExport {
     )
     .with_episodes(s.episodes)
     .with_entities(s.entities)
+    .with_deletions(s.deleted_facts, s.withheld_message_ids)
     .with_completeness(ExportCompleteness {
         mode: EXPORT_COMPLETE_MODE.to_string(),
         include_deleted: input.include_deleted,

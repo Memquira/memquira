@@ -307,6 +307,41 @@ pub trait FactStore: Send + Sync {
         Ok(())
     }
 
+    /// When each of `fact_ids` that THIS tenant holds soft-deleted was deleted. Live, unknown and
+    /// other tenants' ids are absent. Exports use it to mark deleted facts and imports to keep a
+    /// deletion the target already holds. The default (test wrappers) reads each id and, lacking
+    /// the stored time, reports the fact's `updated_at`.
+    async fn deleted_fact_times(
+        &self,
+        tenant: &TenantContext,
+        fact_ids: &[Uuid],
+    ) -> MemquiraResult<std::collections::HashMap<Uuid, DateTime<Utc>>> {
+        let mut times = std::collections::HashMap::new();
+        for id in fact_ids {
+            if let Some(state) = self.get_fact_including_deleted(tenant, *id).await?
+                && state.deleted
+            {
+                times.insert(*id, state.fact.updated_at);
+            }
+        }
+        Ok(times)
+    }
+
+    /// Stores `fact` already soft-deleted at `deleted_at` (an import of a deleted fact): it is
+    /// never live. The SQL stores and the mock write it in one statement; the default (test
+    /// wrappers) inserts it and then soft-deletes it.
+    async fn insert_deleted_fact(
+        &self,
+        tenant: &TenantContext,
+        fact: Fact,
+        deleted_at: DateTime<Utc>,
+    ) -> MemquiraResult<()> {
+        let _ = deleted_at;
+        let id = fact.id;
+        self.insert_fact(tenant, fact).await?;
+        self.soft_delete_fact(tenant, id).await
+    }
+
     async fn delete_user_data(&self, tenant: &TenantContext) -> MemquiraResult<()>;
 
     /// Soft-deletes active facts with `updated_at` older than `cutoff` for the tenant.

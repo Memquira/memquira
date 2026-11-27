@@ -7,7 +7,7 @@
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
     },
-    "version": "0.3.1"
+    "version": "0.3.2"
   },
   "paths": {
     "/api/v1/admin/jobs": {
@@ -6220,6 +6220,14 @@
           "content": {
             "type": "string"
           },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the fact was deleted. Only an `include_deleted` export has deleted facts. An import\nstores the fact deleted: never active, never indexed, its source messages still withheld.\nOmitted when unset; optional on import."
+          },
           "event_time": {
             "oneOf": [
               {
@@ -6612,6 +6620,7 @@
         "required": [
           "manifest_consistent",
           "imported_facts",
+          "imported_deleted_facts",
           "imported_events",
           "skipped_facts",
           "replaced_existing",
@@ -6621,6 +6630,11 @@
         "properties": {
           "dry_run": {
             "type": "boolean"
+          },
+          "imported_deleted_facts": {
+            "type": "integer",
+            "description": "Of `imported_facts`, the facts stored deleted (never active, never indexed).",
+            "minimum": 0
           },
           "imported_entities": {
             "type": [
@@ -6644,6 +6658,7 @@
           },
           "imported_facts": {
             "type": "integer",
+            "description": "Fact rows written, deleted ones included.",
             "minimum": 0
           },
           "manifest_consistent": {
@@ -6666,7 +6681,7 @@
               "integer",
               "null"
             ],
-            "description": "Episodes not imported because episodes are disabled on this server.",
+            "description": "Episodes not imported: all of them when episodes are disabled on this server, otherwise\nthe messages of deleted memories that this import does not store deleted.",
             "minimum": 0
           },
           "skipped_facts": {
@@ -9223,6 +9238,13 @@
           },
           "user_id": {
             "type": "string"
+          },
+          "withheld_message_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Client message ids of exported episodes that a deleted memory cites; retrieval withholds\nthem. An import restores such an episode only when it also stores, deleted, a fact that\ncites it, and skips it otherwise. Omitted when empty; optional on import."
           }
         }
       },

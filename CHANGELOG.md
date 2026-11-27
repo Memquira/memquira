@@ -5,6 +5,8 @@ All notable changes to this project are documented in this file. The project fol
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-27
+
 ### Added
 
 - `memquira-mcp` (preview, `integrations/mcp-python`): an MCP server over stdio that gives Claude Code, Cursor and
@@ -12,6 +14,10 @@ All notable changes to this project are documented in this file. The project fol
   One identity per process from `MEMQUIRA_*` settings; strict tool schemas that refuse identity arguments; https
   required except to localhost; works with self-hosted servers and with the hosted developer preview's developer
   tokens. Not on PyPI yet.
+- `memquira-mcp` with OpenAI Codex (CLI and IDE extension): a `config.toml` example that forwards credentials with
+  `env_vars`, an `AGENTS.md` snippet, and an opt-in acceptance test that drives Codex's own MCP client across
+  sessions without a model call. The server instructions now open with a self-contained summary of the usage rules.
+  Interactive use in Codex is not yet verified.
 
 ### Fixed
 
@@ -23,6 +29,17 @@ All notable changes to this project are documented in this file. The project fol
   no-op) is now recorded as a further source of it, and a structured fact the model did not attribute, from a request
   of one message with a client id, cites that message. Episodes are not erased: export, retention and user erasure
   are unchanged, and other memories from the same message stay searchable. No schema change.
+- Exporting with `include_deleted=true` and importing the export no longer brings deleted memories back. The export
+  did not mark deleted facts, and the import stored and indexed every fact as active, so a deleted memory and the
+  source messages its deletion withholds came back. Exports now mark each deleted fact with `deleted_at` and list the
+  exported messages a deleted memory cites in `withheld_message_ids`. An import stores a marked fact deleted, with its
+  source message ids, and never indexes it; it also treats as deleted a fact the export carries a delete event for
+  (older exports) and, with `mode=replace`, a fact the user already holds deleted. A withheld message is restored only
+  alongside a deleted memory that cites it and is skipped otherwise, so an export without deleted memories does not
+  restore their messages. The import summary gains `imported_deleted_facts`; a dry run reports the same counts.
+  Existing exports import as before. No schema change.
+- A message that asks to forget a memory, when classification deletes that memory, is now recorded as a source of it,
+  so the message (which usually repeats what was deleted) is withheld with it.
 
 ## [0.3.1] - 2026-11-23
 

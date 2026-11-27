@@ -74,7 +74,7 @@ append import checks every fact id it would use:
 
 | Found for this user | Result |
 |---|---|
-| a fact with **identical content** under a planned id | `409 IMPORT_ALREADY_APPLIED`; nothing is imported |
+| a fact with **identical content** under a planned id (live, or deleted when the export marks it deleted) | `409 IMPORT_ALREADY_APPLIED`; nothing is imported |
 | otherwise, a **deleted** fact under a planned id | `409 IMPORT_ID_CONFLICT`; nothing is imported |
 | a fact with different content under a planned id | the imported fact gets a new id |
 
@@ -91,6 +91,29 @@ not generally idempotent.
 Other limits: export and import are per user (no organization-wide restore), JSON bodies only, unencrypted, and
 exports are capped by fixed fact and event limits unless the opt-in complete export is used
 (`complete=true`, with paginated reads of `page_size`).
+
+### Deleted memories in exports
+
+Deleting a memory keeps its row (marked deleted) and its source messages; only erasing the user
+(`DELETE /api/v1/users/{user_id}`) or retention removes them. Export and import keep that state:
+
+- `include_deleted=true` exports deleted memories with `deleted_at` set. Every export lists in
+  `withheld_message_ids` the exported messages that a deleted memory cites.
+- An import stores a fact marked `deleted_at` as deleted, with its source message ids, and never embeds or indexes
+  it, so neither the memory nor its messages come back through search or context. Its entity links are not restored.
+- An exported message listed in `withheld_message_ids` is restored only when the import also stores, deleted, a
+  memory that cites it; otherwise it is skipped (counted in `skipped_episodes`). An export without
+  `include_deleted` therefore restores the user's live memories without the messages of deleted ones.
+- Older exports, written before these fields: a fact the export carries a `delete` event for is stored deleted.
+  `mode=replace` also keeps a deletion the target already holds: an exported fact whose id this user holds deleted
+  is stored deleted, and a message that one of this user's deleted memories cites is not restored.
+- `imported_deleted_facts` in the summary counts the facts stored deleted (they are included in
+  `imported_facts`). A dry run reports the same counts.
+
+Limitations: an export taken **before** a memory was deleted, restored onto a server or user that has no record of
+the deletion, restores the memory. Servers older than these fields ignore them, so importing a newer export there
+restores deleted memories as active. A memory with no `source_message_ids` (extracted without citations) withholds no
+message when it is deleted.
 
 ## Migrations and upgrades
 
