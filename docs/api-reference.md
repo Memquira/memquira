@@ -111,7 +111,13 @@ Scope: `MemoryRead`. Query: `limit`, `cursor`, `memory_type`, `include_deleted`.
 ### `DELETE /api/v1/users/{user_id}/memories/{memory_id}` — delete one memory
 
 Scope: `MemoryDelete`. Soft-deletes the fact and removes its vector. `404 NOT_FOUND` when the id does not belong to
-this user.
+this user; deleting an already deleted memory is safe.
+
+With episodes on, the messages the memory was extracted from (its `source_message_ids`, including later messages that
+restated it) are also withheld from episode search, candidates and `/memories/context`, so the deleted information
+does not come back through them. Other memories extracted from the same message stay searchable. The messages are
+kept as source data until the user is erased or retention removes them, and they remain in the user's export.
+Messages are linked to a memory by client `message_id`: send one with every message.
 
 ### `DELETE /api/v1/users/{user_id}` — erase a user
 

@@ -128,6 +128,11 @@ For Python there is a typed client with sync and async versions and safe retries
 [clients/python](clients/python/) (`pip install ./clients/python`; not on PyPI yet). Minimal example clients in
 Node.js and curl are in [examples/](examples/).
 
+To give an AI coding assistant such as Claude Code or Cursor a long-term memory, use the MCP server in
+[integrations/mcp-python](integrations/mcp-python/) (`memquira-mcp`, preview; not on PyPI yet). It runs locally over
+stdio, acts for one configured user, and offers five tools: remember, search, get context, list and delete one
+memory.
+
 ## Configuration
 
 Configuration is read from environment variables (an optional `.env` file is loaded at startup). The
@@ -166,6 +171,7 @@ TLS-terminating reverse proxy in front of it. Deployment, backups, upgrades and 
 | [Configuration](docs/configuration.md) | Environment variables and defaults |
 | [API reference](docs/api-reference.md) | Endpoints, authentication, examples, errors |
 | [Python client](clients/python/README.md) | Typed sync and async client, retries, use in agents |
+| [MCP server](integrations/mcp-python/README.md) | Memquira memory for Claude Code, Cursor and other MCP clients |
 | [Providers](docs/providers.md) | OpenAI, compatible servers, local models, quality tiers |
 | [Deployment](docs/deployment.md) | Production Compose stack, keys, reverse proxy, sizing |
 | [Operations](docs/operations.md) | Backups, export and import, migrations, maintenance, metrics |

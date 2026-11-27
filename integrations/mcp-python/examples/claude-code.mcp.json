@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "memquira": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["memquira-mcp"],
+      "env": {
+        "MEMQUIRA_URL": "${MEMQUIRA_URL:-http://127.0.0.1:8080}",
+        "MEMQUIRA_API_KEY": "${MEMQUIRA_API_KEY}",
+        "MEMQUIRA_ORG_ID": "${MEMQUIRA_ORG_ID:-demo}",
+        "MEMQUIRA_USER_ID": "${MEMQUIRA_USER_ID}"
+      }
+    }
+  }
+}
